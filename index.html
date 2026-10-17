@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schematic Viewer & Messwerkzeug</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header id="toolbar">
+    <div class="brand">▣ Schematic Viewer</div>
+    <button id="btnOpen" class="primary">Schematic öffnen…</button>
+    <button id="btnDemo">Demo</button>
+    <span class="sep"></span>
+    <button id="btnMeasure" title="Messmodus (M): Linksklick = A, Rechtsklick = B">Messmodus: aus</button>
+    <button id="btnFly" title="Flugmodus (F)">Flugmodus: aus</button>
+    <button id="btnReset" title="Ansicht zurücksetzen (R)">Ansicht reset</button>
+    <label><input type="checkbox" id="chkGrid" checked> Raster</label>
+    <label><input type="checkbox" id="chkAxes" checked> Achsen</label>
+    <label><input type="checkbox" id="chkWire"> Gitter</label>
+    <label class="slice">Ebenen
+      <input type="range" id="sliceY" min="0" max="1" value="1" step="1" disabled>
+      <span id="sliceVal">–</span>
+    </label>
+    <label>Texturen
+      <select id="selVersion" title="Minecraft-Version der Texturen"></select>
+    </label>
+    <input type="file" id="fileInput" accept=".schem,.schematic,.nbt" hidden>
+  </header>
+
+  <canvas id="view"></canvas>
+  <div id="crosshair"></div>
+  <div id="hoverLabel"></div>
+
+  <aside id="info" class="panel">
+    <h3>Info</h3>
+    <div id="infoBody">Noch nichts geladen.</div>
+    <div id="legend"></div>
+  </aside>
+
+  <aside id="measure" class="panel"></aside>
+
+  <aside id="help" class="panel">
+    <b>Orbit</b> – Linke Maustaste: drehen · Rechte/mittlere Taste oder Shift: verschieben · Rad: zoomen · WASD/QE: bewegen<br>
+    <b>Messen</b> – <kbd>Strg</kbd>+Linksklick = Punkt A · <kbd>Strg</kbd>+Rechtsklick = Punkt B · <kbd>C</kbd> = löschen<br>
+    <b>Flug (F)</b> – Maus: umsehen · WASD · Leertaste/Shift: hoch/runter · Strg: schneller · Rad: Tempo · Esc: beenden
+  </aside>
+
+  <div id="drop"><div>.schem / .schematic hier ablegen</div></div>
+  <div id="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/nbt.js"></script>
+  <script src="js/colors.js"></script>
+  <script src="js/legacy.js"></script>
+  <script src="js/schematic.js"></script>
+  <script src="js/assets.js"></script>
+  <script src="js/models.js"></script>
+  <script src="js/mesher.js"></script>
+  <script src="js/measure.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
