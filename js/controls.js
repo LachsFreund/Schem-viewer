@@ -1,7 +1,7 @@
 /*
  * Camera controls.
  *  Orbit mode (Blockbench-like): left-drag rotate, right/middle/shift-drag pan, wheel zoom, WASD/QE move view.
- *  Fly mode: pointer-lock mouse look, WASD + Space/Shift, Ctrl sprint, wheel = speed.
+ *  Fly mode: pointer-lock mouse look, WASD + Space/Shift, wheel = speed.
  */
 class ViewControls {
   constructor(camera, dom) {
@@ -21,6 +21,7 @@ class ViewControls {
     this.onPick = () => {};     // (button, event, fromCenter)
     this.onHover = () => {};    // (event | null, fromCenter)
     this.measureMode = false;
+    this.sensitivity = 0.005;   // rad pro Pixel im Orbit-Modus
     this._drag = null;
     this._bind();
     this.update(0);
@@ -62,13 +63,12 @@ class ViewControls {
     d.addEventListener('contextmenu', e => e.preventDefault());
 
     d.addEventListener('pointerdown', e => {
-      const wantPick = e.ctrlKey || this.measureMode;
       if (this.fly) {
         if (document.pointerLockElement !== d) { d.requestPointerLock(); return; }
-        if (e.ctrlKey || this.measureMode) this.onPick(e.button, e, true);
+        if (e.altKey || this.measureMode) { e.preventDefault(); this.onPick(e.button, e, true); }
         return;
       }
-      if (e.ctrlKey) { e.preventDefault(); this.onPick(e.button, e, false); return; } // Strg+Klick: sofort messen
+      if (e.altKey) { e.preventDefault(); this.onPick(e.button, e, false); return; } // Alt+Klick: sofort messen
       d.setPointerCapture(e.pointerId);
       const pan = e.button === 2 || e.button === 1 || e.shiftKey;
       this._drag = { pan, button: e.button, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
@@ -78,7 +78,7 @@ class ViewControls {
     d.addEventListener('pointermove', e => {
       if (this.fly) return; // handled by 'mousemove' under pointer lock
       if (!this._drag) {
-        this.onHover(e.ctrlKey || this.measureMode ? e : null, false);
+        this.onHover(e.altKey || this.measureMode ? e : null, false);
         return;
       }
       if (Math.hypot(e.clientX - this._drag.sx, e.clientY - this._drag.sy) > 4) this._drag.moved = true;
@@ -121,18 +121,29 @@ class ViewControls {
       }
     }, { passive: false });
 
+    // Alt-Menüleiste des Browsers komplett deaktivieren: solange Alt gehalten wird, löst keine Taste
+    // mehr Browser-Shortcuts aus (Alt+A, Alt+D, Alt+Pfeil, Alt+Home ...). Capture-Phase = vor dem Browser.
+    const killAlt = e => { if (e.altKey || e.code === 'AltLeft' || e.code === 'AltRight') e.preventDefault(); };
+    window.addEventListener('keydown', killAlt, true);
+    window.addEventListener('keypress', killAlt, true);
+    window.addEventListener('keyup', killAlt, true);
+
     window.addEventListener('keydown', e => {
       if (/input|textarea/i.test(e.target.tagName)) return;
       this.keys[e.code] = true;
-      if (e.code === 'Space') e.preventDefault();
+      if (e.code === 'Space' || e.code === 'AltLeft' || e.code === 'AltRight') e.preventDefault();
     });
-    window.addEventListener('keyup', e => { this.keys[e.code] = false; });
+    window.addEventListener('keyup', e => {
+      this.keys[e.code] = false;
+      if (e.code === 'AltLeft' || e.code === 'AltRight') e.preventDefault(); // kein Menü-Fokus im Browser
+    });
     window.addEventListener('blur', () => { this.keys = Object.create(null); });
   }
 
   _rotate(dx, dy) {
-    this.yaw -= dx * 0.005;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.005, -1.55, 1.55);
+    const k = this.sensitivity * (this.fly ? 0.5 : 1); // Flugmodus ist halb so empfindlich
+    this.yaw -= dx * k;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + dy * k, -1.55, 1.55);
   }
 
   _pan(dx, dy) {
@@ -157,7 +168,7 @@ class ViewControls {
 
     if (this.fly) {
       const u = (k.Space ? 1 : 0) - ((k.ShiftLeft || k.ShiftRight) ? 1 : 0);
-      const speed = this.flySpeed * ((k.ControlLeft || k.ControlRight) ? 3 : 1) * dt;
+      const speed = this.flySpeed * dt; // Tempo nur per Mausrad 
       this.pos.addScaledVector(fwd, f * speed)
               .addScaledVector(right, r * speed)
               .addScaledVector(new THREE.Vector3(0, 1, 0), u * speed);

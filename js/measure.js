@@ -1,6 +1,6 @@
 /*
  * Messwerkzeug (wie bei Litematica):
- *   Strg + Linksklick  = Punkt A      Strg + Rechtsklick = Punkt B
+ *   Alt + Linksklick  = Punkt A      Alt + Rechtsklick = Punkt B
  *   - gleicher Block        -> Einzelblock
  *   - Linie  (1 Achse > 1)  -> Länge
  *   - Fläche (2 Achsen > 1) -> Länge × Breite + Blockanzahl
@@ -222,7 +222,7 @@ class Measure {
     const { A, B } = this;
     const fmt = (c, cls) => c
       ? `<span class="pt ${cls}">${cls === 'a' ? 'A' : 'B'}</span> ${c.x}, ${c.y}, ${c.z} <span class="muted">${this.blockName(c).replace(/_/g, ' ')}</span>`
-      : `<span class="pt ${cls} off">${cls === 'a' ? 'A' : 'B'}</span> <span class="muted">${cls === 'a' ? 'Strg + Linksklick' : 'Strg + Rechtsklick'}</span>`;
+      : `<span class="pt ${cls} off">${cls === 'a' ? 'A' : 'B'}</span> <span class="muted">${cls === 'a' ? 'Alt + Linksklick' : 'Alt + Rechtsklick'}</span>`;
 
     let html = `<h3>Messen</h3><div class="row">${fmt(A, 'a')}</div><div class="row">${fmt(B, 'b')}</div>`;
     const r = this.analyse();

@@ -11,6 +11,7 @@
     <div class="brand">▣ Schematic Viewer</div>
     <button id="btnOpen" class="primary">Schematic öffnen…</button>
     <button id="btnDemo">Demo</button>
+    <button id="btnClear" title="Leere 32×32-Fläche anzeigen">Leeren</button>
     <span class="sep"></span>
     <button id="btnMeasure" title="Messmodus (M): Linksklick = A, Rechtsklick = B">Messmodus: aus</button>
     <button id="btnFly" title="Flugmodus (F)">Flugmodus: aus</button>
@@ -21,6 +22,9 @@
     <label class="slice">Ebenen
       <input type="range" id="sliceY" min="0" max="1" value="1" step="1" disabled>
       <span id="sliceVal">–</span>
+    </label>
+    <label>Maus
+      <input type="range" id="sens" min="0.3" max="2" step="0.05" value="1" style="width:80px" title="Maus-Empfindlichkeit">
     </label>
     <label>Texturen
       <select id="selVersion" title="Minecraft-Version der Texturen"></select>
@@ -42,8 +46,8 @@
 
   <aside id="help" class="panel">
     <b>Orbit</b> – Linke Maustaste: drehen · Rechte/mittlere Taste oder Shift: verschieben · Rad: zoomen · WASD/QE: bewegen<br>
-    <b>Messen</b> – <kbd>Strg</kbd>+Linksklick = Punkt A · <kbd>Strg</kbd>+Rechtsklick = Punkt B · <kbd>C</kbd> = löschen<br>
-    <b>Flug (F)</b> – Maus: umsehen · WASD · Leertaste/Shift: hoch/runter · Strg: schneller · Rad: Tempo · Esc: beenden
+    <b>Messen</b> – <kbd>Alt</kbd>+Linksklick = Punkt A · <kbd>Alt</kbd>+Rechtsklick = Punkt B (auch im Flugmodus) · <kbd>C</kbd> = löschen<br>
+    <b>Flug (F)</b> – Maus: umsehen · WASD · Leertaste/Shift: hoch/runter · Mausrad: Tempo · Esc: beenden · Messmodus ohne Alt: M
   </aside>
 
   <div id="drop"><div>.schem / .schematic hier ablegen</div></div>

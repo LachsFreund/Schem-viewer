@@ -14,14 +14,26 @@
   const controls = new ViewControls(camera, canvas);
 
   let atlas = new Atlas();
-  const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
+  // Ebenen-Filter: Fragmente von Blöcken mit y >= uCut werden verworfen (kein Clip-Plane -> keine Unterseiten-Reste)
+  const layerCut = { value: 1e6 };
+  const layerShader = shader => {
+    shader.uniforms.uCut = layerCut;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aLayer;\nvarying float vLayer;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLayer = aLayer;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vLayer;\nuniform float uCut;')
+      .replace('void main() {', 'void main() {\n  if (vLayer > uCut - 0.5) discard;');
+  };
   const matCut = new THREE.MeshBasicMaterial({
-    map: atlas.texture, vertexColors: true, alphaTest: 0.5, clippingPlanes: [clipPlane]
+    map: atlas.texture, vertexColors: true, alphaTest: 0.5
   });
+  matCut.onBeforeCompile = layerShader;
   const matTrans = new THREE.MeshBasicMaterial({
     map: atlas.texture, vertexColors: true, transparent: true, alphaTest: 0.02,
-    depthWrite: false, clippingPlanes: [clipPlane]
+    depthWrite: false
   });
+  matTrans.onBeforeCompile = layerShader;
 
   const modelGroup = new THREE.Group();
   const capGroup = new THREE.Group();
@@ -57,9 +69,9 @@
     if (geoTrans) { const m = new THREE.Mesh(geoTrans, matTrans); m.renderOrder = 1; group.add(m); }
   }
 
-  function rebuildGrid(w, l) {
+  function rebuildGrid(w, l, margin = 32) {
     if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
-    const size = Math.max(16, Math.ceil(Math.max(w, l) / 16) * 16 + 32);
+    const size = Math.max(16, Math.ceil(Math.max(w, l) / 16) * 16 + margin);
     grid = new THREE.GridHelper(size, size, 0x6b7280, 0x3d414a);
     grid.position.set(w / 2, -0.002, l / 2);
     grid.visible = $('chkGrid').checked;
@@ -78,7 +90,7 @@
     const slice = $('sliceY');
     const v = +slice.value;
     const all = slice.disabled || v >= +slice.max;
-    clipPlane.constant = all ? 1e6 : v + 0.0005;
+    layerCut.value = all ? 1e6 : v;
     measure.setMaxY(all ? 1e9 : v);
     $('sliceVal').textContent = slice.disabled ? '–' : (all ? 'alle' : `bis ${v}`);
     if (!capQueued) {
@@ -120,7 +132,7 @@
 
     current = { schem, label, built };
     measure.setModel(schem, built.infos);
-    rebuildGrid(schem.width, schem.length);
+    rebuildGrid(schem.width, schem.length, built.stats.blocks ? 32 : 0); // leere Fläche: Raster exakt so groß wie die Fläche
     axes.scale.setScalar(Math.max(1, Math.min(schem.width, schem.length) / 8));
 
     const slice = $('sliceY');
@@ -207,6 +219,7 @@
   $('btnOpen').onclick = () => $('fileInput').click();
   $('fileInput').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
   $('btnDemo').onclick = () => show(Schematic.demo(), 'Demo-Haus');
+  $('btnClear').onclick = () => show(Schematic.empty(32, 16, 32), 'Leere Fläche 32×32');
   $('btnReset').onclick = resetView;
   $('btnFly').onclick = () => controls.setFly(!controls.fly);
   $('btnMeasure').onclick = () => setMeasureMode(!controls.measureMode);
@@ -214,6 +227,17 @@
   $('chkGrid').onchange = e => { if (grid) grid.visible = e.target.checked; };
   $('chkAxes').onchange = e => { axes.visible = e.target.checked; };
   $('chkWire').onchange = e => { matCut.wireframe = matTrans.wireframe = e.target.checked; };
+
+  // Maus-Empfindlichkeit (wird gemerkt)
+  const BASE_SENS = controls.sensitivity;
+  const sensEl = $('sens');
+  try { const saved = localStorage.getItem('sv-sens'); if (saved) sensEl.value = saved; } catch (e) {}
+  const applySens = () => {
+    controls.sensitivity = BASE_SENS * +sensEl.value;
+    try { localStorage.setItem('sv-sens', sensEl.value); } catch (e) {}
+  };
+  sensEl.oninput = applySens;
+  applySens();
 
   // Texturversion
   const sel = $('selVersion');
@@ -243,11 +267,11 @@
     if (/input|textarea|select/i.test(e.target.tagName)) return;
     if (e.code === 'KeyF') controls.setFly(!controls.fly);
     if (e.code === 'KeyR') resetView();
-    if (e.code === 'KeyC' && !e.ctrlKey) measure.clear();
+    if (e.code === 'KeyC' && !e.ctrlKey && !e.altKey) measure.clear();
     if (e.code === 'KeyM') setMeasureMode(!controls.measureMode);
   });
   window.addEventListener('keyup', e => {
-    if ((e.code === 'ControlLeft' || e.code === 'ControlRight') && !controls.measureMode) measure.setHover(null);
+    if ((e.code === 'AltLeft' || e.code === 'AltRight') && !controls.measureMode) measure.setHover(null);
   });
 
   // Drag & Drop
@@ -278,11 +302,11 @@
     last = now;
     controls.update(dt);
 
-    // im Flugmodus: Hover über Bildmitte, solange Strg gehalten wird
-    if (controls.fly && current && (controls.keys.ControlLeft || controls.keys.ControlRight || controls.measureMode) && now - flyHoverT > 80) {
+    // im Flugmodus: Hover über Bildmitte, solange Alt gehalten wird
+    if (controls.fly && current && (controls.keys.AltLeft || controls.keys.AltRight || controls.measureMode) && now - flyHoverT > 80) {
       flyHoverT = now;
       measure.setHover(pick(null, true));
-    } else if (controls.fly && !(controls.keys.ControlLeft || controls.keys.ControlRight || controls.measureMode)) {
+    } else if (controls.fly && !(controls.keys.AltLeft || controls.keys.AltRight || controls.measureMode)) {
       if (measure.boxHover.visible) measure.setHover(null);
     }
     renderer.render(scene, camera);

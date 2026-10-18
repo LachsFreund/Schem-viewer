@@ -8,13 +8,14 @@ const Mesher = (() => {
   const DIRV = Models.DIRV;
 
   class Buf {
-    constructor() { this.pos = []; this.uv = []; this.col = []; this.idx = []; this.n = 0; }
+    constructor() { this.pos = []; this.uv = []; this.col = []; this.layer = []; this.idx = []; this.n = 0; }
     geometry() {
       if (!this.n) return null;
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
       g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+      g.setAttribute('aLayer', new THREE.Float32BufferAttribute(this.layer, 1));
       g.setIndex(new THREE.Uint32BufferAttribute(this.idx, 1));
       g.computeBoundingSphere();
       return g;
@@ -33,6 +34,7 @@ const Mesher = (() => {
       buf.pos.push(q.p[i * 3] / 16 + x, q.p[i * 3 + 1] / 16 + y, q.p[i * 3 + 2] / 16 + z);
       atlas.uv(q.tex, q.uv[i * 2], q.uv[i * 2 + 1], buf.uv);
       buf.col.push(r, g, b);
+      buf.layer.push(y);
     }
     // Ecken: 0=TL 1=TR 2=BR 3=BL  -> gegen den Uhrzeigersinn von außen
     buf.idx.push(base, base + 3, base + 2, base, base + 2, base + 1);

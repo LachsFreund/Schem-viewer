@@ -138,5 +138,10 @@ const Schematic = (() => {
     return { width: W, height: H, length: L, palette, blocks };
   }
 
-  return { load, demo, parseState };
+  /* Leere Fläche (nur Luft) */
+  function empty(w = 32, h = 16, l = 32) {
+    return { width: w, height: h, length: l, palette: [{ name: 'minecraft:air', props: {} }], blocks: new Int32Array(w * h * l) };
+  }
+
+  return { load, demo, empty, parseState };
 })();
