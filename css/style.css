@@ -166,3 +166,20 @@ body.flying #crosshair { display: block; }
 @media (max-width: 900px) {
   #measure { max-width: 60vw; }
 }
+
+/* Alt gehalten (Messen) und Messmodus: normaler Zeiger statt Hand */
+body.orbit.alt #view, body.orbit.alt.dragging #view { cursor: default; }
+
+/* ---------- Einklappbare Bereiche ---------- */
+details > summary {
+  cursor: pointer; user-select: none; list-style: none;
+  font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  padding: 2px 0;
+}
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: "▸"; display: inline-block; width: 1.1em; transition: transform .15s; }
+details[open] > summary::before { transform: rotate(90deg); }
+details > summary:hover { color: var(--text); }
+#legendBox { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+#legend { margin-top: 6px; max-height: 40vh; overflow: auto; }
+#helpBox[open] > summary { margin-bottom: 4px; }

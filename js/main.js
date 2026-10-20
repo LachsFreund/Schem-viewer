@@ -44,6 +44,8 @@
   scene.add(axes);
 
   const measure = new Measure(scene, $('measure'), $('hoverLabel'));
+  const physics = new Physics();
+  controls.collides = (mn, mx) => physics.collides(mn, mx);
 
   let current = null;     // { schem, label, built }
   let buildToken = 0;
@@ -92,6 +94,7 @@
     const all = slice.disabled || v >= +slice.max;
     layerCut.value = all ? 1e6 : v;
     measure.setMaxY(all ? 1e9 : v);
+    physics.maxY = all ? 1e9 : v;
     $('sliceVal').textContent = slice.disabled ? '–' : (all ? 'alle' : `bis ${v}`);
     if (!capQueued) {
       capQueued = true;
@@ -108,6 +111,39 @@
     const cap = current.built.cap(v - 1);
     if (cap) addMeshes(capGroup, cap.cutout, cap.translucent);
   }
+
+  /* ---------- Speichern (Einstellungen + zuletzt geöffnetes Schematic) ---------- */
+  const SKEY = 'sv-settings';
+  let settings = {};
+  try { settings = JSON.parse(localStorage.getItem(SKEY) || '{}'); } catch (e) {}
+  const saveSettings = () => { try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch (e) {} };
+  const setSource = kind => { settings.source = kind; saveSettings(); };
+
+  const DB = {
+    open() {
+      return new Promise((res, rej) => {
+        const r = indexedDB.open('schem-viewer', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('kv');
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+    },
+    async set(k, v) {
+      const db = await this.open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(v, k);
+        tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+      });
+    },
+    async get(k) {
+      const db = await this.open();
+      return new Promise((res, rej) => {
+        const rq = db.transaction('kv').objectStore('kv').get(k);
+        rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+      });
+    }
+  };
 
   /* ---------- Laden & Anzeigen ---------- */
   async function show(schem, label) {
@@ -132,6 +168,7 @@
 
     current = { schem, label, built };
     measure.setModel(schem, built.infos);
+    physics.setModel(schem, built.infos);
     rebuildGrid(schem.width, schem.length, built.stats.blocks ? 32 : 0); // leere Fläche: Raster exakt so groß wie die Fläche
     axes.scale.setScalar(Math.max(1, Math.min(schem.width, schem.length) / 8));
 
@@ -155,7 +192,8 @@
       toast('Texturen konnten nicht (vollständig) geladen werden – es werden Farben angezeigt. Internetverbindung prüfen.', true, 9000);
     }
 
-    $('legend').innerHTML = built.stats.legend.slice(0, 14).map(e =>
+    $('legendCount').textContent = `(${built.stats.legend.length})`;
+    $('legend').innerHTML = built.stats.legend.slice(0, 60).map(e =>
       `<div class="legend-row"><span class="swatch" style="background:${hexCss(e.hex)}"></span>` +
       `<span class="legend-name" title="${e.name}">${pretty(e.name)}</span>` +
       `<span class="legend-count">${e.count.toLocaleString('de-DE')}</span></div>`
@@ -166,13 +204,67 @@
     if (!file) return;
     try {
       toast('Lade ' + file.name + ' …', false, 60000);
-      const schem = await Schematic.load(await file.arrayBuffer());
+      const buf = await file.arrayBuffer();
+      const schem = await Schematic.load(buf);
       await show(schem, file.name);
+      DB.set('file', { name: file.name, buf }).then(() => setSource('file')).catch(() => {});
       toast(file.name + ' geladen');
     } catch (err) {
       console.error(err);
       toast(err.message || String(err), true);
     }
+  }
+
+  /* ---------- Türen / Falltüren / Zauntore bedienen ---------- */
+  const USABLE = /_door$|_trapdoor$|_fence_gate$/;
+  let refreshing = false, refreshAgain = false;
+
+  async function refreshMesh() {
+    if (refreshing) { refreshAgain = true; return; }
+    refreshing = true;
+    try {
+      do {
+        refreshAgain = false;
+        const built = await Mesher.build(current.schem, atlas);
+        clearGroup(modelGroup);
+        addMeshes(modelGroup, built.cutout, built.translucent);
+        current.built = built;
+        measure.infos = built.infos;
+        physics.infos = built.infos;
+        applyCap();
+      } while (refreshAgain);
+    } catch (err) { console.error(err); toast(err.message || String(err), true); }
+    finally { refreshing = false; }
+  }
+
+  function setOpen(schem, x, y, z) {
+    const idx = x + z * schem.width + y * schem.width * schem.length;
+    const st = schem.palette[schem.blocks[idx]];
+    const props = Object.assign({}, st.props, { open: st.props && st.props.open === 'true' ? 'false' : 'true' });
+    let pi = schem.palette.findIndex(p => p.name === st.name && JSON.stringify(Object.entries(p.props || {}).sort()) === JSON.stringify(Object.entries(props).sort()));
+    if (pi < 0) { schem.palette.push({ name: st.name, props }); pi = schem.palette.length - 1; }
+    schem.blocks[idx] = pi;
+    return props;
+  }
+
+  function useBlock(hit) {
+    if (!hit || !current) return;
+    const s = current.schem;
+    const st = s.palette[s.blocks[hit.x + hit.z * s.width + hit.y * s.width * s.length]];
+    const name = st.name.replace(/^minecraft:/, '');
+    if (!USABLE.test(name)) return;
+
+    const props = setOpen(s, hit.x, hit.y, hit.z);
+    // Türen bestehen aus zwei Hälften – die andere muss mitschalten
+    if (/_door$/.test(name)) {
+      const oy = (st.props && st.props.half === 'upper') ? hit.y - 1 : hit.y + 1;
+      if (oy >= 0 && oy < s.height) {
+        const other = s.palette[s.blocks[hit.x + hit.z * s.width + oy * s.width * s.length]];
+        if (other && other.name === st.name) setOpen(s, hit.x, oy, hit.z);
+      }
+    }
+    toast(`${name.replace(/_/g, ' ')}: ${props.open === 'true' ? 'geöffnet' : 'geschlossen'}`, false, 900);
+    refreshMesh();
   }
 
   /* ---------- Picking / Messen ---------- */
@@ -185,10 +277,15 @@
     }
     return ray.ray;
   }
-  function pick(ev, fromCenter) {
+  let REACH = 4; // Reichweite im Flugmodus in Blöcken (per Regler einstellbar)
+  function pick(ev, fromCenter, maxDist = 0) {
     const r = rayFrom(ev, fromCenter);
-    return measure.raycast(r.origin, r.direction);
+    const hit = measure.raycast(r.origin, r.direction);
+    if (hit && maxDist > 0 && hit.t > maxDist) return null;
+    return hit;
   }
+
+  controls.onInteract = (ev, fromCenter) => { if (controls.fly && fromCenter) useBlock(pick(ev, true, REACH)); }; // nur im Flugmodus
 
   controls.onPick = (button, ev, fromCenter) => {
     const hit = pick(ev, fromCenter);
@@ -218,15 +315,15 @@
   /* ---------- Verdrahtung ---------- */
   $('btnOpen').onclick = () => $('fileInput').click();
   $('fileInput').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
-  $('btnDemo').onclick = () => show(Schematic.demo(), 'Demo-Haus');
-  $('btnClear').onclick = () => show(Schematic.empty(32, 16, 32), 'Leere Fläche 32×32');
+  $('btnDemo').onclick = () => { setSource('demo'); show(Schematic.demo(), 'Demo-Haus'); };
+  $('btnClear').onclick = () => { setSource('empty'); show(Schematic.empty(32, 16, 32), 'Leere Fläche 32×32'); };
   $('btnReset').onclick = resetView;
   $('btnFly').onclick = () => controls.setFly(!controls.fly);
   $('btnMeasure').onclick = () => setMeasureMode(!controls.measureMode);
   $('sliceY').oninput = updateSlice;
-  $('chkGrid').onchange = e => { if (grid) grid.visible = e.target.checked; };
-  $('chkAxes').onchange = e => { axes.visible = e.target.checked; };
-  $('chkWire').onchange = e => { matCut.wireframe = matTrans.wireframe = e.target.checked; };
+  $('chkGrid').onchange = e => { if (grid) grid.visible = e.target.checked; settings.grid = e.target.checked; saveSettings(); };
+  $('chkAxes').onchange = e => { axes.visible = e.target.checked; settings.axes = e.target.checked; saveSettings(); };
+  $('chkWire').onchange = e => { matCut.wireframe = matTrans.wireframe = e.target.checked; settings.wire = e.target.checked; saveSettings(); };
 
   // Maus-Empfindlichkeit (wird gemerkt)
   const BASE_SENS = controls.sensitivity;
@@ -239,11 +336,27 @@
   sensEl.oninput = applySens;
   applySens();
 
-  // Texturversion
+  // Reichweite (nur Flugmodus)
+  const reachEl = $('reach');
+  try { const saved = localStorage.getItem('sv-reach'); if (saved) reachEl.value = saved; } catch (e) {}
+  const applyReach = () => {
+    REACH = +reachEl.value;
+    $('reachVal').textContent = REACH;
+    try { localStorage.setItem('sv-reach', reachEl.value); } catch (e) {}
+  };
+  reachEl.oninput = applyReach;
+  applyReach();
+
+  // Texturversion (gespeicherte Auswahl, außer die URL gibt ?mc= vor)
+  if (!new URLSearchParams(location.search).get('mc') && settings.version && CONFIG.VERSIONS.includes(settings.version)) {
+    CONFIG.version = settings.version;
+    Assets.setVersion(settings.version);
+  }
   const sel = $('selVersion');
   CONFIG.VERSIONS.forEach(v => sel.add(new Option(v, v)));
   sel.value = CONFIG.version;
   sel.onchange = () => {
+    settings.version = sel.value; saveSettings();
     CONFIG.version = sel.value;
     Assets.setVersion(sel.value);
     Models.reset();
@@ -254,12 +367,26 @@
     if (current) show(current.schem, current.label);
   };
 
+  const flyLabel = () => {
+    $('btnFly').textContent = controls.fly ? (controls.walk ? 'Gehmodus: an' : 'Flugmodus: an') : 'Flugmodus: aus';
+  };
+  controls.onWalkChange = walk => {
+    flyLabel();
+    toast(walk ? 'Schwerkraft an – Leertaste springt, Doppel-Leertaste = wieder fliegen' : 'Flugmodus – Doppel-Leertaste = Schwerkraft', false, 1800);
+  };
+
+  let speedToastT = 0;
+  controls.onSpeedChange = v => {
+    const now = performance.now();
+    if (now - speedToastT > 120) { speedToastT = now; toast(`Lauftempo: ${v.toFixed(1)} Blöcke/s (×${(v / 4.317).toFixed(1)})`, false, 900); }
+  };
+
   controls.onFlyChange = on => {
-    $('btnFly').textContent = 'Flugmodus: ' + (on ? 'an' : 'aus');
+    flyLabel();
     $('btnFly').classList.toggle('active', on);
     document.body.classList.toggle('flying', on);
     document.body.classList.toggle('orbit', !on);
-    if (on) measure.setHover(null);
+    measure.setHover(null);
   };
   document.body.classList.add('orbit');
 
@@ -267,12 +394,23 @@
     if (/input|textarea|select/i.test(e.target.tagName)) return;
     if (e.code === 'KeyF') controls.setFly(!controls.fly);
     if (e.code === 'KeyR') resetView();
-    if (e.code === 'KeyC' && !e.ctrlKey && !e.altKey) measure.clear();
+    // Z (nach aufgedrucktem Zeichen, damit es auch auf QWERTZ-Tastaturen funktioniert) oder C: Auswahl zurücksetzen
+    if (((e.key && e.key.toLowerCase() === 'z') || e.code === 'KeyC') && !e.ctrlKey && !e.altKey && !e.metaKey) measure.clear();
     if (e.code === 'KeyM') setMeasureMode(!controls.measureMode);
+    if (e.code === 'KeyX' && controls.fly) useBlock(pick(null, true, REACH)); // benutzen ohne Rechtsklick (nur Flugmodus)
   });
   window.addEventListener('keyup', e => {
     if ((e.code === 'AltLeft' || e.code === 'AltRight') && !controls.measureMode) measure.setHover(null);
   });
+
+  let lastMouse = null;
+  canvas.addEventListener('pointermove', e => { lastMouse = { clientX: e.clientX, clientY: e.clientY }; });
+
+  // Alt gehalten -> normaler Mauszeiger statt Hand
+  const setAlt = on => document.body.classList.toggle('alt', on);
+  window.addEventListener('keydown', e => { if (e.code === 'AltLeft' || e.code === 'AltRight') setAlt(true); });
+  window.addEventListener('keyup', e => { if (e.code === 'AltLeft' || e.code === 'AltRight') setAlt(false); });
+  window.addEventListener('blur', () => setAlt(false));
 
   // Drag & Drop
   let dragDepth = 0;
@@ -302,17 +440,43 @@
     last = now;
     controls.update(dt);
 
-    // im Flugmodus: Hover über Bildmitte, solange Alt gehalten wird
-    if (controls.fly && current && (controls.keys.AltLeft || controls.keys.AltRight || controls.measureMode) && now - flyHoverT > 80) {
+    // Flugmodus: anvisierter Block bekommt eine Outline
+    if (controls.fly && current && now - flyHoverT > 30) {
       flyHoverT = now;
-      measure.setHover(pick(null, true));
-    } else if (controls.fly && !(controls.keys.AltLeft || controls.keys.AltRight || controls.measureMode)) {
-      if (measure.boxHover.visible) measure.setHover(null);
+      if (controls.keys.AltLeft || controls.keys.AltRight || controls.measureMode) {
+        measure.setHover(pick(null, true), true);                 // Messen: unbegrenzte Reichweite + Name
+      } else {
+        measure.setHover(pick(null, true, REACH), false);         // normal: 4 Blöcke Reichweite, nur Outline
+      }
     }
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
-  show(Schematic.demo(), 'Demo-Haus');
+  // gespeicherte Einstellungen anwenden
+  for (const [id, key] of [['chkGrid', 'grid'], ['chkAxes', 'axes'], ['chkWire', 'wire']]) {
+    if (typeof settings[key] === 'boolean') { $(id).checked = settings[key]; $(id).onchange({ target: $(id) }); }
+  }
+  for (const [id, key] of [['legendBox', 'legendOpen'], ['helpBox', 'helpOpen']]) {
+    const el = $(id);
+    el.open = !!settings[key];
+    el.addEventListener('toggle', () => { settings[key] = el.open; saveSettings(); });
+  }
+
+  // zuletzt geöffnetes Schematic wiederherstellen
+  (async () => {
+    if (settings.source === 'file') {
+      try {
+        const rec = await DB.get('file');
+        if (rec && rec.buf) {
+          const schem = await Schematic.load(rec.buf);
+          await show(schem, rec.name);
+          return;
+        }
+      } catch (e) { console.warn('Wiederherstellen fehlgeschlagen', e); }
+    }
+    if (settings.source === 'empty') show(Schematic.empty(32, 16, 32), 'Leere Fläche 32×32');
+    else show(Schematic.demo(), 'Demo-Haus');
+  })();
 })();

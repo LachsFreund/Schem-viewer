@@ -100,7 +100,7 @@ class Measure {
             if (t1 > t2) [t1, t2] = [t2, t1];
             near = Math.max(near, t1); far = Math.min(far, t2);
           }
-          if (hit && near <= far && far >= 0) return { x, y, z };
+          if (hit && near <= far && far >= 0) return { x, y, z, t: Math.max(near, 0), b };
         }
       }
       const a = tMax[0] < tMax[1] ? (tMax[0] < tMax[2] ? 0 : 2) : (tMax[1] < tMax[2] ? 1 : 2);
@@ -116,11 +116,19 @@ class Measure {
   setB(c) { this.B = c; this.update(); }
   clear() { this.A = this.B = null; this.update(); }
 
-  setHover(c) {
+  /** Hover-Outline. Mit c.b (Block-Bounds) wird die echte Form umrandet (Tür, Treppe, Fackel ...). */
+  setHover(c, showLabel = true) {
     if (!c) { this.boxHover.visible = false; this.hoverLabel.style.display = 'none'; return; }
-    this._place(this.boxHover, [c.x, c.y, c.z], [c.x, c.y, c.z], 0.01);
-    this.hoverLabel.style.display = 'block';
-    this.hoverLabel.textContent = `${this.blockName(c)}  (${c.x}, ${c.y}, ${c.z})`;
+    if (c.b) {
+      const b = c.b, pad = 0.004;
+      this.boxHover.position.set(c.x + (b[0] + b[3]) / 2, c.y + (b[1] + b[4]) / 2, c.z + (b[2] + b[5]) / 2);
+      this.boxHover.scale.set(b[3] - b[0] + pad * 2, b[4] - b[1] + pad * 2, b[5] - b[2] + pad * 2);
+      this.boxHover.visible = true;
+    } else {
+      this._place(this.boxHover, [c.x, c.y, c.z], [c.x, c.y, c.z], 0.01);
+    }
+    this.hoverLabel.style.display = showLabel ? 'block' : 'none';
+    if (showLabel) this.hoverLabel.textContent = `${this.blockName(c)}  (${c.x}, ${c.y}, ${c.z})`;
   }
 
   _place(obj, a, b, pad = 0) {
@@ -236,7 +244,7 @@ class Measure {
         html += `<div class="mats">${rows}</div>`;
       }
     }
-    if (A || B) html += `<div class="btns"><button data-action="clear">Zurücksetzen</button><button data-action="copy">Kopieren</button></div>`;
+    if (A || B) html += `<div class="btns"><button data-action="clear" title="Taste Z">Zurücksetzen (Z)</button><button data-action="copy">Kopieren</button></div>`;
     this.panel.innerHTML = html;
   }
 }

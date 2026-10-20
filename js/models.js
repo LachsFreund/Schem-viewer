@@ -19,6 +19,12 @@ const Models = (() => {
   // Standardwerte für Eigenschaften, die in manchen Schematics fehlen
   const DEFAULT_PROPS = { shape: 'straight', waterlogged: 'false', open: 'false', powered: 'false', lit: 'false', snowy: 'false', type: 'bottom' };
 
+  // Blöcke ohne Kollision (man läuft durch)
+  const NO_COLLIDE = new RegExp([
+    '(^|_)(torch|button|sign|banner|rail|rails|vine|vines|lever|tripwire|tripwire_hook|string|cobweb|ladder|sapling|kelp|seagrass|tall_seagrass|roots|sprouts|fern|grass|tulip|dandelion|poppy|orchid|allium|bluet|cornflower|daisy|lilac|peony|bush|mushroom|fungus|lily_pad|wheat|carrots|potatoes|beetroots|sugar_cane|candle|lantern|head|skull|pressure_plate|water|lava|bubble_column|fire|frogspawn|dead_bush|petals|redstone_wire|comparator|repeater|coral_fan|wall_coral_fan|leaf_litter|bamboo_sapling)$',
+    'torch', '_button$', 'pressure_plate$', '_sign$', '_banner$', '_head$', '_skull$', 'coral_fan$', 'candle$', 'flower$'
+  ].join('|'));
+
   const modelMemo = new Map();
   let stateMemo = new Map();
 
@@ -145,6 +151,20 @@ const Models = (() => {
                      to[0] === 16 && to[1] === 16 && to[2] === 16;
       const fullKeys = [];
 
+      // Kollisionsbox dieses Elements (nach allen Rotationen)
+      {
+        const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+        for (const x of [from[0], to[0]]) for (const y of [from[1], to[1]]) for (const z of [from[2], to[2]]) {
+          let p = [x, y, z];
+          if (el.rotation) p = rotElem(p, el.rotation);
+          if (rx || ry) p = rotState(p, rx, ry);
+          for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], p[a]); mx[a] = Math.max(mx[a], p[a]); }
+        }
+        if (mx[0] - mn[0] > 0.01 && mx[1] - mn[1] > 0.01 && mx[2] - mn[2] > 0.01) {
+          out.boxes.push([mn[0] / 16, mn[1] / 16, mn[2] / 16, mx[0] / 16, mx[1] / 16, mx[2] / 16].map(r4));
+        }
+      }
+
       for (const dirName of DIRN) {
         const face = el.faces && el.faces[dirName];
         if (!face) continue;
@@ -224,7 +244,7 @@ const Models = (() => {
     const props = Object.assign({}, DEFAULT_PROPS, st.props || {});
     const out = {
       name, skip: false, translucent: TRANSLUCENT.test(name), cullSame: CULL_SAME.test(name),
-      quads: [], bounds: null, fullKeys: null, fullCube: false, opaqueFull: false
+      quads: [], boxes: [], collide: false, bounds: null, fullKeys: null, fullCube: false, opaqueFull: false
     };
     if (SKIP.test(name)) { out.skip = true; return out; }
 
@@ -285,6 +305,7 @@ const Models = (() => {
 
   function finish(out) {
     out.fullCube = !!out.fullKeys;
+    out.collide = !NO_COLLIDE.test(out.name) && out.boxes.length > 0;
 
     // deckungsgleiche Flächen (z.B. Gras-Overlay) minimal nach außen schieben -> kein Z-Fighting
     const seen = new Map();
