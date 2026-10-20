@@ -392,6 +392,15 @@
 
   window.addEventListener('keydown', e => {
     if (/input|textarea|select/i.test(e.target.tagName)) return;
+    // Pfeiltasten links/rechts: Ebenen-Regler runter/hoch (ohne vorher auf den Regler zu klicken)
+    if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const sl = $('sliceY');
+      if (!sl.disabled) {
+        e.preventDefault();
+        sl.value = +sl.value + (e.code === 'ArrowRight' ? 1 : -1);
+        updateSlice();
+      }
+    }
     if (e.code === 'KeyF') controls.setFly(!controls.fly);
     if (e.code === 'KeyR') resetView();
     // Z (nach aufgedrucktem Zeichen, damit es auch auf QWERTZ-Tastaturen funktioniert) oder C: Auswahl zurücksetzen
