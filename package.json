@@ -1,0 +1,11 @@
+{
+  "name": "redner-website",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "mkdir -p dist/js && uglifyjs js/config.js js/nbt.js js/colors.js js/legacy.js js/schematic.js js/assets.js js/models.js js/mesher.js js/measure.js js/physics.js js/controls.js js/main.js -o dist/js/bundle.js && javascript-obfuscator dist/js/bundle.js --output dist/js/bundle.js --compact true --identifier-names-generator hexadecimal --string-array true --string-array-encoding 'base64' --rename-globals true"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1",
+    "uglify-js": "^3.17.4"
+  }
+}
