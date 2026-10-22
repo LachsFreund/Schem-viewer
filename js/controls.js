@@ -77,15 +77,63 @@ class ViewControls {
     this.onWalkChange(on);
   }
 
+  /** Tippen (nur Touch): Messmodus: 1× = Punkt A, 2× schnell = Punkt B; Flugmodus (ohne Messmodus): benutzen. */
+  _tap(e) {
+    const fromCenter = this.fly;
+    const pos = { clientX: e.clientX, clientY: e.clientY };
+    if (this.measureMode) {
+      const now = performance.now(), L = this._lastTap;
+      if (L && now - L.t < 280 && Math.hypot(L.x - e.clientX, L.y - e.clientY) < 40) {
+        clearTimeout(this._tapTimer);
+        this._lastTap = null;
+        this.onPick(2, pos, fromCenter);                  // Doppeltippen = Punkt B
+      } else {
+        this._lastTap = { t: now, x: e.clientX, y: e.clientY };
+        clearTimeout(this._tapTimer);
+        // Einfachtippen = Punkt A (kurz warten, ob noch ein zweites Tippen folgt)
+        this._tapTimer = setTimeout(() => { this._lastTap = null; this.onPick(0, pos, fromCenter); }, 300);
+      }
+    } else if (this.fly) {
+      this.onInteract(pos, true);
+    }
+  }
+
   /* ---------- events ---------- */
   _bind() {
     const d = this.dom;
 
     d.addEventListener('contextmenu', e => e.preventDefault());
 
+    // ---------- Touch (iPad): 1 Finger drehen, 2 Finger zoomen + verschieben, Tippen / Doppeltippen ----------
+    this._touches = new Map();
+    this._gest = null;
+    this._tapBad = false;
+    this._tapTimer = null;
+    this._lastTap = null;
+    const pair = () => {
+      const [p, q] = [...this._touches.values()];
+      return { dist: Math.hypot(p.x - q.x, p.y - q.y), mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 };
+    };
+    const newDrag = (x, y, moved) => ({ pan: false, button: 0, x, y, sx: x, sy: y, moved, t: performance.now(), touch: true });
+
     d.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') {
+        e.preventDefault();
+        if (d.setPointerCapture) d.setPointerCapture(e.pointerId);
+        this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this._touches.size === 1) {
+          this._tapBad = false;
+          this._drag = newDrag(e.clientX, e.clientY, false);
+        } else if (this._touches.size === 2) {
+          this._tapBad = true;
+          this._drag = null;
+          this._gest = pair();
+        }
+        return;
+      }
+
       if (this.fly) {
-        if (document.pointerLockElement !== d) { d.requestPointerLock(); return; }
+        if (document.pointerLockElement !== d) { d.requestPointerLock && d.requestPointerLock(); return; }
         if (e.altKey || this.measureMode) { e.preventDefault(); this.onPick(e.button, e, true); }
         else if (e.button === 2) this.onInteract(e, true);   // Rechtsklick = benutzen (Tür, Falltür ...)
         return;
@@ -93,11 +141,34 @@ class ViewControls {
       if (e.altKey) { e.preventDefault(); this.onPick(e.button, e, false); return; } // Alt+Klick: sofort messen
       d.setPointerCapture(e.pointerId);
       const pan = e.button === 2 || e.button === 1 || e.shiftKey;
-      this._drag = { pan,  button: e.button, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
+      this._drag = { pan, button: e.button, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false };
       document.body.classList.add('dragging');
     });
 
     d.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') {
+        if (!this._touches.has(e.pointerId)) return;
+        this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this._touches.size === 2 && this._gest) {
+          const g = pair(), o = this._gest;
+          if (this.fly) {
+            // Flugmodus: Pinch = vor / zurück
+            if (!this.walk) this.pos.addScaledVector(this.forwardVec(), (g.dist - o.dist) * this.flySpeed * 0.01);
+          } else {
+            this.dist = THREE.MathUtils.clamp(this.dist * o.dist / Math.max(1, g.dist), 0.5, 5000); // Pinch = Zoom
+            this._pan(g.mx - o.mx, g.my - o.my);                                                    // 2 Finger schieben = verschieben
+          }
+          this._gest = g;
+        } else if (this._touches.size === 1 && this._drag) {
+          const dr = this._drag;
+          if (Math.hypot(e.clientX - dr.sx, e.clientY - dr.sy) > 8) dr.moved = true;
+          const dx = e.clientX - dr.x, dy = e.clientY - dr.y;
+          dr.x = e.clientX; dr.y = e.clientY;
+          this._rotate(dx, dy);                                                                      // 1 Finger = drehen / umsehen
+        }
+        return;
+      }
+
       if (this.fly) return; // handled by 'mousemove' under pointer lock
       if (!this._drag) {
         this.onHover(e.altKey || this.measureMode ? e : null, false);
@@ -111,6 +182,23 @@ class ViewControls {
     });
 
     const end = e => {
+      if (e.pointerType === 'touch') {
+        const had = this._touches.delete(e.pointerId);
+        if (d.hasPointerCapture && d.hasPointerCapture(e.pointerId)) d.releasePointerCapture(e.pointerId);
+        if (!had) return;
+        if (this._touches.size === 0) {
+          const dr = this._drag;
+          this._drag = null; this._gest = null;
+          if (dr && !dr.moved && !this._tapBad && e.type === 'pointerup' && performance.now() - dr.t < 500) this._tap(e);
+          this._tapBad = false;
+        } else if (this._touches.size === 1) {
+          const p = [...this._touches.values()][0];
+          this._gest = null;
+          this._drag = newDrag(p.x, p.y, true);   // verbleibender Finger dreht weiter, ohne Sprung
+        }
+        return;
+      }
+
       const drag = this._drag;
       this._drag = null;
       document.body.classList.remove('dragging');
@@ -122,6 +210,11 @@ class ViewControls {
     };
     d.addEventListener('pointerup', end);
     d.addEventListener('pointercancel', end);
+
+    // Safari: Seiten-Zoom per Pinch verhindern
+    for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.addEventListener(ev, e => e.preventDefault());
+    }
 
     document.addEventListener('mousemove', e => {
       if (this.fly && document.pointerLockElement === d) this._rotate(e.movementX, e.movementY);

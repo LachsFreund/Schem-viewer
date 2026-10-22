@@ -53,8 +53,12 @@ const Mesher = (() => {
     for (const info of infos) for (const q of info.quads) keys.push(q.tex);
     await atlas.ensure(keys);
 
+    // Banner & Köpfe (Block-Entities) mit echten Texturen vorbereiten
+    try { await Special.prepare(schem, infos, atlas); } catch (err) { console.warn('Special-Blöcke:', err); schem.special = new Map(); }
+    const sp = schem.special || new Map();
+
     for (const info of infos) {
-      info.opaqueFull = !info.skip && info.fullCube && !info.translucent &&
+      info.opaqueFull = !info.skip && !info.special && info.fullCube && !info.translucent &&
                         info.fullKeys.every(k => !atlas.hasAlpha(k));
       info.group = /leaves$/.test(info.name) ? 'leaves' : info.name;
     }
@@ -84,7 +88,8 @@ const Mesher = (() => {
       total++;
       counts.set(info.name, (counts.get(info.name) || 0) + 1);
       const buf = info.translucent ? trans : cut;
-      for (const q of info.quads) {
+      const quads = (info.special && sp.get(x + z * W + y * W * L)) || info.quads;
+      for (const q of quads) {
         if (culled(info, q, x, y, z)) continue;
         emit(buf, q, x, y, z, atlas);
       }
@@ -100,7 +105,7 @@ const Mesher = (() => {
       const c = new Buf(), t = new Buf();
       for (let z = 0; z < L; z++) for (let x = 0; x < W; x++) {
         const info = infos[blocks[x + z * W + y * W * L]];
-        if (!info || info.skip) continue;
+        if (!info || info.skip || info.special) continue;
         for (const q of info.quads) {
           if (q.cull !== 1) continue;                 // nur "up"
           if (!culled(info, q, x, y, z)) continue;     // war ohnehin sichtbar

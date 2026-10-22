@@ -107,13 +107,14 @@ class Atlas {
     this.tile = CONFIG.TILE;
     this.cell = this.tile + 2;                      // 1px Rand rundherum
     this.cols = Math.floor(this.size / this.cell);
+    this.occ = new Uint8Array(this.cols * this.cols); // belegte Zellen
+    this.cursor = 0;
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.canvas.height = this.size;
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
     this.ctx.imageSmoothingEnabled = false;
-    this.entries = new Map();   // key -> {px, py, alpha}
+    this.entries = new Map();   // key -> {px, py, w, h, alpha, missing?}
     this.pending = new Map();
-    this.next = 0;
 
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.magFilter = THREE.NearestFilter;
@@ -121,43 +122,63 @@ class Atlas {
     this.texture.generateMipmaps = false;
   }
 
-  _slot() {
-    const i = this.next++;
-    if (i >= this.cols * this.cols) throw new Error('Textur-Atlas voll');
-    return { px: (i % this.cols) * this.cell + 1, py: Math.floor(i / this.cols) * this.cell + 1 };
+  /** Belegt einen Block aus cw x ch Zellen und liefert die linke obere Zelle. */
+  _alloc(cw, ch) {
+    const cols = this.cols;
+    if (cw === 1 && ch === 1) {
+      for (let i = this.cursor; i < this.occ.length; i++) {
+        if (!this.occ[i]) { this.occ[i] = 1; this.cursor = i + 1; return { cx: i % cols, cy: Math.floor(i / cols) }; }
+      }
+      throw new Error('Textur-Atlas voll');
+    }
+    for (let cy = 0; cy + ch <= cols; cy++) for (let cx = 0; cx + cw <= cols; cx++) {
+      let free = true;
+      for (let y = 0; y < ch && free; y++) for (let x = 0; x < cw; x++) if (this.occ[(cy + y) * cols + cx + x]) { free = false; break; }
+      if (!free) continue;
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) this.occ[(cy + y) * cols + cx + x] = 1;
+      return { cx, cy };
+    }
+    throw new Error('Textur-Atlas voll');
   }
 
-  _fillColor(key, hex) {
-    const { px, py } = this._slot();
-    const ctx = this.ctx, t = this.tile;
-    ctx.fillStyle = '#' + hex.padStart(6, '0');
-    ctx.fillRect(px - 1, py - 1, t + 2, t + 2);
-    this.entries.set(key, { px, py, alpha: false });
+  _fillColor(key, hex, missing = false) {
+    const { cx, cy } = this._alloc(1, 1);
+    const px = cx * this.cell + 1, py = cy * this.cell + 1, t = this.tile;
+    this.ctx.fillStyle = '#' + hex.padStart(6, '0');
+    this.ctx.fillRect(px - 1, py - 1, t + 2, t + 2);
+    this.entries.set(key, { px, py, w: t, h: t, alpha: false, missing });
   }
 
-  _draw(key, img) {
-    const { px, py } = this._slot();
-    const ctx = this.ctx, t = this.tile;
-    const sw = img.width, sh = Math.min(img.width, img.height); // nur 1. Frame bei Animationen
-    ctx.clearRect(px - 1, py - 1, t + 2, t + 2);
-    ctx.drawImage(img, 0, 0, sw, sh, px, py, t, t);
-    // Randpixel extrudieren
-    ctx.drawImage(img, 0, 0, 1, sh, px - 1, py, 1, t);
-    ctx.drawImage(img, sw - 1, 0, 1, sh, px + t, py, 1, t);
-    ctx.drawImage(img, 0, 0, sw, 1, px, py - 1, t, 1);
-    ctx.drawImage(img, 0, sh - 1, sw, 1, px, py + t, t, 1);
-    ctx.drawImage(img, 0, 0, 1, 1, px - 1, py - 1, 1, 1);
-    ctx.drawImage(img, sw - 1, 0, 1, 1, px + t, py - 1, 1, 1);
-    ctx.drawImage(img, 0, sh - 1, 1, 1, px - 1, py + t, 1, 1);
-    ctx.drawImage(img, sw - 1, sh - 1, 1, 1, px + t, py + t, 1, 1);
+  /** Zeichnet src (sw x sh) in eine tw x th große Fläche des Atlas (mit extrudiertem Rand). */
+  _put(key, src, sw, sh, tw, th) {
+    const { cx, cy } = this._alloc(Math.ceil((tw + 2) / this.cell), Math.ceil((th + 2) / this.cell));
+    const px = cx * this.cell + 1, py = cy * this.cell + 1;
+    const ctx = this.ctx;
+    ctx.clearRect(px - 1, py - 1, tw + 2, th + 2);
+    ctx.drawImage(src, 0, 0, sw, sh, px, py, tw, th);
+    // Randpixel extrudieren (verhindert Bluten / Flackern an Kanten)
+    ctx.drawImage(src, 0, 0, 1, sh, px - 1, py, 1, th);
+    ctx.drawImage(src, sw - 1, 0, 1, sh, px + tw, py, 1, th);
+    ctx.drawImage(src, 0, 0, sw, 1, px, py - 1, tw, 1);
+    ctx.drawImage(src, 0, sh - 1, sw, 1, px, py + th, tw, 1);
+    ctx.drawImage(src, 0, 0, 1, 1, px - 1, py - 1, 1, 1);
+    ctx.drawImage(src, sw - 1, 0, 1, 1, px + tw, py - 1, 1, 1);
+    ctx.drawImage(src, 0, sh - 1, 1, 1, px - 1, py + th, 1, 1);
+    ctx.drawImage(src, sw - 1, sh - 1, 1, 1, px + tw, py + th, 1, 1);
 
-    const d = ctx.getImageData(px, py, t, t).data;
+    const d = ctx.getImageData(px, py, tw, th).data;
     let alpha = false;
     for (let i = 3; i < d.length; i += 4) if (d[i] < 255) { alpha = true; break; }
-    this.entries.set(key, { px, py, alpha });
+    this.entries.set(key, { px, py, w: tw, h: th, alpha });
+    this.texture.needsUpdate = true;
   }
 
-  /** Stellt sicher, dass alle Keys im Atlas sind. Key = "block/stone" oder "color:RRGGBB". */
+  /** Eigenes Bild / Canvas in Originalgröße (Banner, Skins ...) ablegen. */
+  addImage(key, img, w = img.width, h = img.height) {
+    if (!this.entries.has(key)) this._put(key, img, w, h, w, h);
+  }
+
+  /** Stellt sicher, dass alle Keys im Atlas sind. Key = "block/stone", "color:RRGGBB" oder "entity/..." (Originalgröße). */
   async ensure(keys) {
     const jobs = [];
     for (const key of new Set(keys)) {
@@ -166,8 +187,14 @@ class Atlas {
       const p = (async () => {
         if (key.startsWith('color:')) { this._fillColor(key, key.slice(6)); return; }
         const img = await Assets.image('textures/' + key + '.png');
-        if (img) this._draw(key, img);
-        else this._fillColor(key, 'ff00ff');
+        if (!img) { this._fillColor(key, 'ff00ff', true); return; }
+        if (key.startsWith('entity/')) this._put(key, img, img.width, img.height, img.width, img.height);
+        else {
+          const sw = img.width, sh = Math.min(img.width, img.height); // nur 1. Frame bei Animationen
+          // größere Texturen (z. B. 32x32-Schilder ab 26.x) in Originalauflösung ablegen, sonst werden sie verwaschen
+          if (sw > this.tile) this._put(key, img, sw, sh, sw, sh);
+          else this._put(key, img, sw, sh, this.tile, this.tile);
+        }
       })();
       this.pending.set(key, p);
       jobs.push(p);
@@ -179,11 +206,11 @@ class Atlas {
 
   hasAlpha(key) { const e = this.entries.get(key); return !e || e.alpha; }
 
-  /** u,v in 0..16 (Modell-Raum, v von oben) -> Atlas-UV */
+  /** u,v in 0..16 (Modell-Raum, v von oben, bezogen auf die ganze Textur) -> Atlas-UV */
   uv(key, u, v, out) {
     const e = this.entries.get(key);
-    out.push((e.px + (u / 16) * this.tile) / this.size,
-             1 - (e.py + (v / 16) * this.tile) / this.size);
+    out.push((e.px + (u / 16) * e.w) / this.size,
+             1 - (e.py + (v / 16) * e.h) / this.size);
   }
 
   dispose() { this.texture.dispose(); }

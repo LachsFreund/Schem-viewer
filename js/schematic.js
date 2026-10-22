@@ -47,7 +47,16 @@ const Schematic = (() => {
     for (let i = 0; i < palette.length; i++) if (!palette[i]) palette[i] = { name: 'minecraft:air', props: {} };
 
     const blocks = decodeVarints(data, width * height * length);
-    return { width, height, length, palette, blocks };
+
+    // Block-Entities (Banner, Köpfe ...): Position -> Daten
+    const blockEntities = new Map();
+    const list = (s.Blocks && s.Blocks.BlockEntities) || s.BlockEntities || [];
+    for (const be of list) {
+      if (!be || !be.Pos) continue;
+      const [x, y, z] = be.Pos;
+      blockEntities.set(x + z * width + y * width * length, { id: String(be.Id || '').replace(/^minecraft:/, ''), data: be.Data || be });
+    }
+    return { width, height, length, palette, blocks, blockEntities };
   }
 
   function fromLegacy(root) {
@@ -74,7 +83,11 @@ const Schematic = (() => {
       }
       blocks[i] = idx;
     }
-    return { width, height, length, palette, blocks };
+    const blockEntities = new Map();
+    for (const te of root.TileEntities || []) {
+      if (te && te.x !== undefined) blockEntities.set(te.x + te.z * width + te.y * width * length, { id: String(te.id || '').toLowerCase(), data: te });
+    }
+    return { width, height, length, palette, blocks, blockEntities };
   }
 
   async function load(arrayBuffer) {

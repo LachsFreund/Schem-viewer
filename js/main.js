@@ -433,6 +433,13 @@
     openFile(e.dataTransfer.files[0]);
   });
 
+  // Leistenhöhe messen (die Leiste bricht auf schmalen Fenstern / dem iPad in mehrere Zeilen um)
+  const toolbar = $('toolbar');
+  const syncToolbar = () => document.documentElement.style.setProperty('--tb', toolbar.offsetHeight + 'px');
+  if (window.ResizeObserver) new ResizeObserver(syncToolbar).observe(toolbar);
+  window.addEventListener('resize', syncToolbar);
+  syncToolbar();
+
   /* ---------- Render-Schleife ---------- */
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;

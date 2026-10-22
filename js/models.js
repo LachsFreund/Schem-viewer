@@ -47,8 +47,11 @@ const Models = (() => {
   }
 
   function resolveTex(ref, tex) {
+    // Seit 26.x können Texturen Objekte sein: { "sprite": "minecraft:block/glass", "force_translucent": true }
+    const unwrap = r => (r && typeof r === 'object' && typeof r.sprite === 'string') ? r.sprite : r;
     let n = 0;
-    while (typeof ref === 'string' && ref[0] === '#' && n++ < 12) ref = tex[ref.slice(1)];
+    ref = unwrap(ref);
+    while (typeof ref === 'string' && ref[0] === '#' && n++ < 12) ref = unwrap(tex[ref.slice(1)]);
     if (typeof ref !== 'string' || ref[0] === '#') return null;
     return ref.replace(/^minecraft:/, '');
   }
@@ -239,7 +242,25 @@ const Models = (() => {
   }
 
   /* ---------- Hauptfunktion ---------- */
+  const SPECIAL_RE = /_banner$|_head$|_skull$|_sign$/;
+
   async function build(st) {
+    const out = await buildInner(st);
+    const n = out.name;
+    if (!out.skip && SPECIAL_RE.test(n) && n !== 'piston_head') {
+      // Banner & Köpfe sind Block-Entities: ihr echtes Aussehen erzeugt special.js. Hier nur Auswahl-Box.
+      out.special = true;
+      out.collide = false;
+      out.fullCube = false; out.fullKeys = null;   // nie als "voller Block" behandeln (sonst fehlen Nachbarflächen)
+      out.bounds = /_banner$/.test(n) ? [0.1, 0, 0.1, 0.9, 1, 0.9]
+        : /_sign$/.test(n) ? [0.05, 0.1, 0.05, 0.95, 0.9, 0.95]
+        : /wall/.test(n) ? [0.25, 0.25, 0.25, 0.75, 0.75, 0.75]
+        : [0.25, 0, 0.25, 0.75, 0.5, 0.75];
+    }
+    return out;
+  }
+
+  async function buildInner(st) {
     const name = st.name.replace(/^minecraft:/, '');
     const props = Object.assign({}, DEFAULT_PROPS, st.props || {});
     const out = {
@@ -285,6 +306,7 @@ const Models = (() => {
       if (!model) continue;
       const rx = ap.x || 0, ry = ap.y || 0;
       if (model.elements) {
+        out.hasElements = true;                       // Modell mit echter Geometrie (z. B. Schilder ab 26.x)
         bake(model.elements, model.textures, rx, ry, name, out, colorKey);
       } else {
         // Block-Entities (Truhe, Bett, Schild, ...): einfache Box mit Partikel-Textur
@@ -344,8 +366,16 @@ const Models = (() => {
     return stateMemo.get(key);
   }
 
+  /** Baut Quads aus selbst erzeugten Elementen (für Banner / Köpfe). */
+  function bakeElements(elements, textures, rx, ry, name) {
+    const out = { quads: [], boxes: [], fullKeys: null };
+    bake(elements, textures, rx, ry, name, out, 'color:888888');
+    return out.quads;
+  }
+
   return {
     resolveState,
+    bakeElements,
     DIRV,
     reset() { modelMemo.clear(); stateMemo = new Map(); }
   };
