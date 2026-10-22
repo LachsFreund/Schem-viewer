@@ -19,6 +19,10 @@ html, body {
 }
 
 #view {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   position: fixed;
   inset: 0;
   width: 100%;
@@ -72,7 +76,7 @@ label.slice input { width: 140px; }
   backdrop-filter: blur(6px);
 }
 
-#info { top: 58px; left: 12px; min-width: 190px; max-width: 260px; max-height: calc(100% - 140px); overflow: auto; }
+#info { top: calc(var(--tb, 58px) + 10px); left: 12px; min-width: 190px; max-width: 260px; max-height: calc(100% - var(--tb, 58px) - 80px); overflow: auto; }
 #info h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 #infoBody { color: var(--text); }
 #legend { margin-top: 8px; }
@@ -146,7 +150,7 @@ kbd {
 #measure .btns button { padding: 3px 9px; font-size: 12px; }
 
 #hoverLabel {
-  position: fixed; top: 58px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: calc(var(--tb, 58px) + 10px); left: 50%; transform: translateX(-50%);
   background: rgba(20,22,26,.9); border: 1px solid var(--border);
   padding: 3px 10px; border-radius: 5px; font-size: 12px; z-index: 6;
   display: none; pointer-events: none;
@@ -183,3 +187,16 @@ details > summary:hover { color: var(--text); }
 #legendBox { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
 #legend { margin-top: 6px; max-height: 40vh; overflow: auto; }
 #helpBox[open] > summary { margin-bottom: 4px; }
+
+/* ---------- Touch / iPad ---------- */
+body { -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+#toolbar, .panel { -webkit-user-select: none; user-select: none; }
+@media (pointer: coarse) {
+  button { padding: 9px 14px; font-size: 14px; }
+  select { padding: 7px 8px; font-size: 14px; }
+  label { font-size: 14px; }
+  input[type=range] { height: 28px; }
+  input[type=checkbox] { width: 20px; height: 20px; }
+  summary { padding: 6px 0; }
+  #toolbar { padding-top: max(8px, env(safe-area-inset-top)); }
+}
