@@ -1,0 +1,61 @@
+  <header id="toolbar">
+    <div class="brand">▣ Schematic Viewer</div>
+    <button id="btnOpen" class="primary">Schematic öffnen…</button>
+    <button id="btnDemo">Demo</button>
+    <button id="btnClear" title="Leere 32×32-Fläche anzeigen">Leeren</button>
+    <span class="sep"></span>
+    <button id="btnMeasure" title="Messmodus (M): Linksklick = A, Rechtsklick = B">Messmodus: aus</button>
+    <button id="btnFly" title="Flugmodus (F)">Flugmodus: aus</button>
+    <button id="btnReset" title="Ansicht zurücksetzen (R)">Ansicht reset</button>
+    <label><input type="checkbox" id="chkGrid" checked> Raster</label>
+    <label><input type="checkbox" id="chkAxes" checked> Achsen</label>
+    <label><input type="checkbox" id="chkWire"> Gitter</label>
+    <label class="slice">Ebenen
+      <input type="range" id="sliceY" min="0" max="1" value="1" step="1" disabled>
+      <span id="sliceVal">–</span>
+    </label>
+    <label>Maus
+      <input type="range" id="sens" min="0.3" max="2" step="0.05" value="1" style="width:80px" title="Maus-Empfindlichkeit">
+    </label>
+    <label title="Reichweite im Flugmodus (Blöcke)">Reichweite
+      <input type="range" id="reach" min="2" max="20" step="1" value="4" style="width:80px">
+      <span id="reachVal">4</span>
+    </label>
+    <label>Texturen
+      <select id="selVersion" title="Minecraft-Version der Texturen"></select>
+    </label>
+    <button id="btnLogout" title="Abmelden (Schlüssel auf diesem Gerät vergessen)">Abmelden</button>
+    <input type="file" id="fileInput" accept=".schem,.schematic,.nbt" hidden>
+  </header>
+
+  <canvas id="view"></canvas>
+  <div id="crosshair"></div>
+  <div id="hoverLabel"></div>
+
+  <aside id="info" class="panel">
+    <h3>Info</h3>
+    <div id="infoBody">Noch nichts geladen.</div>
+    <details id="legendBox">
+      <summary>Blockliste <span id="legendCount" class="muted"></span></summary>
+      <div id="legend"></div>
+    </details>
+  </aside>
+
+  <aside id="measure" class="panel"></aside>
+
+  <aside id="help" class="panel">
+    <details id="helpBox">
+      <summary>Steuerung</summary>
+    <b>Orbit</b> – Linke Maustaste: drehen · Rechte/mittlere Taste oder Shift: verschieben · Rad: zoomen · WASD/QE: bewegen<br>
+    <b>Touch (iPad)</b> – 1 Finger: drehen · 2 Finger: zoomen + verschieben · Messmodus: Tippen = A, Doppeltippen = B<br>
+    <b>Ebenen</b> – <kbd>←</kbd> / <kbd>→</kbd> = Ebene runter / hoch (Regler in der Leiste)<br>
+    <b>Messen</b> – <kbd>Alt</kbd>+Linksklick = Punkt A · <kbd>Alt</kbd>+Rechtsklick = Punkt B (auch im Flugmodus) · <kbd>Z</kbd> = Auswahl zurücksetzen<br>
+    <b>Flug (F)</b> – Maus: umsehen · WASD · Leertaste/Shift: hoch/runter · Mausrad: Tempo · Esc: beenden<br>
+    <b>Reichweite</b> – nur im Flugmodus (Regler oben, Standard 4 Blöcke); der anvisierte Block wird umrandet<br>
+    <b>Gehen</b> – im Flugmodus <kbd>Leertaste</kbd> 2× = Schwerkraft an/aus · Leertaste: springen · Mausrad: Lauftempo<br>
+    <b>Benutzen</b> – nur im Flugmodus: Rechtsklick auf Tür / Falltür / Zauntor (oder <kbd>X</kbd>) · Messmodus ohne Alt: <kbd>M</kbd>
+    </details>
+  </aside>
+
+  <div id="drop"><div>.schem / .schematic hier ablegen</div></div>
+  <div id="toast"></div>

@@ -313,6 +313,12 @@
   }
 
   /* ---------- Verdrahtung ---------- */
+  // Abmelden: gespeicherten Zugangsschlüssel (Login) vergessen und neu laden
+  if ($('btnLogout')) $('btnLogout').onclick = () => {
+    for (const st of [window.localStorage, window.sessionStorage]) { try { st.removeItem('sv-access'); } catch (e) {} }
+    location.reload();
+  };
+
   $('btnOpen').onclick = () => $('fileInput').click();
   $('fileInput').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
   $('btnDemo').onclick = () => { setSource('demo'); show(Schematic.demo(), 'Demo-Haus'); };

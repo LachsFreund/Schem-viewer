@@ -1,0 +1,20 @@
+# Optional: Render-Blueprint. Alternativ kannst du alles auch von Hand im Dashboard einstellen (siehe Anleitung).
+services:
+  - type: web
+    runtime: static
+    name: schematic-viewer
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: ACCESS_KEY
+        sync: false          # Wert wird im Dashboard eingetragen – NICHT hier und NICHT im Repository
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
