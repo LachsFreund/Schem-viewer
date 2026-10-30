@@ -13,11 +13,12 @@
  *   2. Datei .access-key im Projektordner (nicht ins Repository einchecken!)
  *   3. Eingabe im Terminal
  *
- * Verfahren: PBKDF2-HMAC-SHA256 (600 000 Runden, zufälliges Salt) -> AES-256-GCM (zufällige IV).
+ * Verfahren: deflate-raw -> PBKDF2-HMAC-SHA256 (600 000 Runden, zufälliges Salt) -> AES-256-GCM (zufällige IV).
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const readline = require('readline');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -56,17 +57,19 @@ async function getKey() {
     html: fs.readFileSync(APP_HTML, 'utf8'),
     js: fs.readFileSync(BUNDLE, 'utf8')
   });
+  // Erst komprimieren, dann verschlüsseln (verschlüsselte Daten lassen sich nicht mehr komprimieren)
+  const packed = zlib.deflateRawSync(Buffer.from(plain, 'utf8'), { level: 9 });
 
   const salt = crypto.randomBytes(16);
   const iv = crypto.randomBytes(12);
   const key = crypto.pbkdf2Sync(Buffer.from(pass, 'utf8'), salt, ITERATIONS, 32, 'sha256');
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  const body = Buffer.concat([cipher.update(packed), cipher.final()]);
   const c = Buffer.concat([body, cipher.getAuthTag()]);   // WebCrypto erwartet Ciphertext || Tag
 
-  const payload = { v: 1, n: ITERATIONS, s: salt.toString('base64'), i: iv.toString('base64'), c: c.toString('base64') };
+  const payload = { v: 2, z: 1, n: ITERATIONS, s: salt.toString('base64'), i: iv.toString('base64'), c: c.toString('base64') };
   fs.writeFileSync(OUT, 'window.__SV_PAYLOAD=' + JSON.stringify(payload) + ';\n');
 
   if (!keep) fs.unlinkSync(BUNDLE);
-  console.log(`Verschlüsselt: ${path.relative(ROOT, OUT)} (${(c.length / 1024).toFixed(0)} KB)` + (keep ? '' : ' – unverschlüsseltes Bundle gelöscht'));
+  console.log(`Verschlüsselt: ${path.relative(ROOT, OUT)} (${(plain.length / 1024).toFixed(0)} KB Klartext -> ${(c.length / 1024).toFixed(0)} KB komprimiert + verschlüsselt)` + (keep ? '' : ' – unverschlüsseltes Bundle gelöscht'));
 })().catch(err => { console.error('FEHLER: ' + err.message); process.exit(1); });

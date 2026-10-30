@@ -1,3 +1,4 @@
+// javascript-obfuscator:disable  (Mesher: Schleifen über Millionen Blöcke: String-Array-Verschleierung würde das ~50x langsamer machen)
 /*
  * Mesher: Schematic + Atlas -> Three.js-Geometrien.
  *  - echte Minecraft-Modelle (siehe models.js), Faces mit cullface werden gegen Nachbarn entfernt
@@ -125,3 +126,5 @@ const Mesher = (() => {
 
   return { build };
 })();
+
+// javascript-obfuscator:enable

@@ -1,3 +1,4 @@
+// javascript-obfuscator:disable  (Blockzustände auflösen: Verschleierung macht das ~10x langsamer)
 /*
  * Models: übersetzt einen Block-Zustand (z.B. "oak_stairs[facing=north,half=top]") in fertige Quads,
  * genau wie Minecraft es tut: blockstates/*.json -> models/**.json (inkl. Parent-Vererbung),
@@ -400,3 +401,4 @@ const Models = (() => {
     reset() { modelMemo.clear(); stateMemo = new Map(); }
   };
 })();
+// javascript-obfuscator:enable

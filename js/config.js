@@ -14,7 +14,7 @@ const CONFIG = {
 
   TILE: 16,          // Texturgröße im Atlas (Vanilla = 16px)
   ATLAS_SIZE: 2048,  // 2048x2048: Platz für viele Texturen, Banner-Designs und Schildertexte
-  MAX_PARALLEL: 12   // gleichzeitige Downloads
+  MAX_PARALLEL: 24   // gleichzeitige Downloads (HTTP/2 der Quelle erlaubt viele parallele Anfragen)
 };
 
 (function () {

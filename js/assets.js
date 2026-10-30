@@ -101,6 +101,7 @@ const Assets = (() => {
 })();
 
 
+// javascript-obfuscator:disable  (Atlas.uv() wird pro Vertex aufgerufen)
 class Atlas {
   constructor() {
     this.size = CONFIG.ATLAS_SIZE;
@@ -215,3 +216,4 @@ class Atlas {
 
   dispose() { this.texture.dispose(); }
 }
+// javascript-obfuscator:enable

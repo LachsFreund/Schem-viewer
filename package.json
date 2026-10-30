@@ -6,10 +6,17 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "node tools/assemble.js start && uglifyjs js/config.js js/nbt.js js/colors.js js/legacy.js js/schematic.js js/assets.js js/models.js js/special.js js/mesher.js js/measure.js js/physics.js js/controls.js js/main.js -o .build/bundle.js && javascript-obfuscator .build/bundle.js --output .build/bundle.js --compact true --identifier-names-generator hexadecimal --string-array true --string-array-encoding 'base64' --rename-globals true && node tools/encrypt.js && uglifyjs js/login.js -o dist/js/login.js && javascript-obfuscator dist/js/login.js --output dist/js/login.js --compact true --identifier-names-generator hexadecimal --string-array true --string-array-encoding 'base64' --rename-globals true && node tools/assemble.js finish"
+    "build": "node tools/assemble.js start && uglifyjs --comments '/javascript-obfuscator/' js/config.js js/nbt.js js/colors.js js/legacy.js js/schematic.js js/assets.js js/models.js js/special.js js/mesher.js js/measure.js js/physics.js js/controls.js js/main.js -o .build/bundle.js && javascript-obfuscator .build/bundle.js --output .build/bundle.js --compact true --identifier-names-generator hexadecimal --string-array true --string-array-encoding 'base64' --rename-globals true && javascript-obfuscator .build/bundle.js --output .build/bundle.js --compact true --identifier-names-generator hexadecimal --string-array false --rename-globals true && node tools/encrypt.js && uglifyjs js/login.js -o dist/js/login.js && javascript-obfuscator dist/js/login.js --output dist/js/login.js --compact true --identifier-names-generator hexadecimal --string-array true --string-array-encoding 'base64' --rename-globals true && node tools/assemble.js finish",
+    "start": "node server/index.js",
+    "selftest": "node tools/selftest.js",
+    "admin": "node server/admin.js"
   },
   "devDependencies": {
     "javascript-obfuscator": "^4.1.1",
     "uglify-js": "^3.17.4"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
   }
 }

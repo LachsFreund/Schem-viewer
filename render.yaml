@@ -1,4 +1,5 @@
-# Optional: Render-Blueprint. Alternativ kannst du alles auch von Hand im Dashboard einstellen (siehe Anleitung).
+# Render-Blueprint für die einfache Variante: Static Site, Zugang nur mit Schlüssel.
+# (Konten mit Server + Datenbank: render.accounts.yaml / DEPLOY.md)
 services:
   - type: web
     runtime: static
@@ -7,7 +8,7 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: ACCESS_KEY
-        sync: false          # Wert wird im Dashboard eingetragen – NICHT hier und NICHT im Repository
+        sync: false          # Wert im Dashboard eintragen – NICHT hier und NICHT im Repository
     headers:
       - path: /*
         name: X-Content-Type-Options

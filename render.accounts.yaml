@@ -1,0 +1,26 @@
+# Nur für den Betrieb MIT Konten (Web Service + PostgreSQL) – siehe DEPLOY.md. Für die einfache Seite 'render.yaml' benutzen.
+# Render-Blueprint: Web Service (Node) + PostgreSQL für die Konten.
+# Alternativ alles von Hand im Dashboard einstellen (siehe Anleitung).
+services:
+  - type: web
+    runtime: node
+    name: schematic-viewer
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/status
+    envVars:
+      - key: ACCESS_KEY
+        sync: false            # Wert im Dashboard eintragen – NICHT hier und NICHT im Repository
+      - key: REQUIRE_ACCOUNT
+        value: "true"          # "false" = der Zugangsschlüssel allein genügt weiterhin zum Entsperren
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: schematic-viewer-db
+          property: connectionString
+
+databases:
+  - name: schematic-viewer-db
+    databaseName: schematic_viewer
+    user: schematic_viewer

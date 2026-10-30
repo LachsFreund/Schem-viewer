@@ -1,3 +1,4 @@
+// javascript-obfuscator:disable  (Kollisionsabfragen im Gehmodus: String-Array-Verschleierung würde das ~50x langsamer machen)
 /* Kollisionsabfrage gegen die Blöcke des Schematics (für den Gehmodus). */
 class Physics {
   constructor() { this.schem = null; this.infos = null; this.maxY = 1e9; }
@@ -27,3 +28,5 @@ class Physics {
     return false;
   }
 }
+
+// javascript-obfuscator:enable

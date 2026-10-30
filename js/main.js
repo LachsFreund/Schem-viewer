@@ -71,13 +71,48 @@
     if (geoTrans) { const m = new THREE.Mesh(geoTrans, matTrans); m.renderOrder = 1; group.add(m); }
   }
 
+  // "N" für Norden: liegt flach auf der Grundplatte am nördlichen Rand (Norden = -Z), Oberkante des Buchstabens zeigt nach Norden
+  function makeNorthMark(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.lineJoin = 'round';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold 170px system-ui, Arial, sans-serif';
+    g.lineWidth = 12;
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.fillStyle = '#ff5a4d';
+    g.strokeText('N', 128, 156);
+    g.fillText('N', 128, 156);
+    g.beginPath();                                  // kleiner Pfeil nach Norden über dem N
+    g.moveTo(128, 6); g.lineTo(172, 66); g.lineTo(84, 66); g.closePath();
+    g.stroke(); g.fill();
+    const mark = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, side: THREE.DoubleSide })
+    );
+    mark.rotation.x = -Math.PI / 2;                 // flach hinlegen: Oberkante -> Norden, rechts -> Osten
+    mark.renderOrder = 2;
+    return mark;
+  }
+
+  let northMark = null;
+
   function rebuildGrid(w, l, margin = 32) {
     if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
+    if (northMark) { scene.remove(northMark); northMark.geometry.dispose(); northMark.material.map.dispose(); northMark.material.dispose(); northMark = null; }
     const size = Math.max(16, Math.ceil(Math.max(w, l) / 16) * 16 + margin);
     grid = new THREE.GridHelper(size, size, 0x6b7280, 0x3d414a);
     grid.position.set(w / 2, -0.002, l / 2);
     grid.visible = $('chkGrid').checked;
     scene.add(grid);
+
+    const ms = Math.min(8, Math.max(3, size / 12));
+    northMark = makeNorthMark(ms);
+    northMark.position.set(w / 2, 0.02, l / 2 - size / 2 + ms * 0.6);   // mittig am Nordrand der Platte
+    northMark.visible = grid.visible;                                  // folgt dem Haken "Raster"
+    scene.add(northMark);
   }
 
   function resetView() {
@@ -313,11 +348,19 @@
   }
 
   /* ---------- Verdrahtung ---------- */
-  // Abmelden: gespeicherten Zugangsschlüssel (Login) vergessen und neu laden
-  if ($('btnLogout')) $('btnLogout').onclick = () => {
-    for (const st of [window.localStorage, window.sessionStorage]) { try { st.removeItem('sv-access'); } catch (e) {} }
-    location.reload();
-  };
+  // Abmelden: Konto-Sitzung beim Server beenden, gespeicherten Zugangsschlüssel vergessen, neu laden
+  if ($('btnLogout')) {
+    if (window.__SV_USER) $('btnLogout').textContent = 'Abmelden (' + window.__SV_USER + ')';
+    $('btnLogout').onclick = async () => {
+      try {
+        if (window.__SV_USER && typeof fetch === 'function') {
+          await fetch('/api/logout', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        }
+      } catch (e) {}
+      for (const st of [window.localStorage, window.sessionStorage]) { try { st.removeItem('sv-access'); } catch (e) {} }
+      location.reload();
+    };
+  }
 
   $('btnOpen').onclick = () => $('fileInput').click();
   $('fileInput').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
@@ -327,7 +370,7 @@
   $('btnFly').onclick = () => controls.setFly(!controls.fly);
   $('btnMeasure').onclick = () => setMeasureMode(!controls.measureMode);
   $('sliceY').oninput = updateSlice;
-  $('chkGrid').onchange = e => { if (grid) grid.visible = e.target.checked; settings.grid = e.target.checked; saveSettings(); };
+  $('chkGrid').onchange = e => { if (grid) grid.visible = e.target.checked; if (northMark) northMark.visible = e.target.checked; settings.grid = e.target.checked; saveSettings(); };
   $('chkAxes').onchange = e => { axes.visible = e.target.checked; settings.axes = e.target.checked; saveSettings(); };
   $('chkWire').onchange = e => { matCut.wireframe = matTrans.wireframe = e.target.checked; settings.wire = e.target.checked; saveSettings(); };
 
