@@ -296,12 +296,60 @@ const Special = (() => {
     return els.length ? Models.bakeElements(els, tex, 0, ry, 'signtext') : [];
   }
 
+  /* ---------- Truhen ---------- */
+  const CHEST_RE = /(^|_)chest$/;
+
+  // Textur je Truhenart und Hälfte (single / left / right)
+  function chestTexture(name, type) {
+    const side = type === 'left' ? '_left' : type === 'right' ? '_right' : '';
+    if (name === 'ender_chest') return 'entity/chest/ender';
+    if (name === 'trapped_chest') return 'entity/chest/trapped' + side;
+    if (/copper_chest$/.test(name)) {                       // ab 26.x: copper, copper_exposed, copper_weathered, copper_oxidized
+      const w = name.replace(/^waxed_/, '').replace(/_?copper_chest$/, '');
+      return 'entity/chest/copper' + (w ? '_' + w : '') + side;
+    }
+    return 'entity/chest/normal' + side;
+  }
+
+  // Maße in 1/16-Block (Vorderseite = Süden bei Drehung 0): Unterteil 14x10x14, Deckel 14x5x14, Schloss 2x4x1
+  function chestQuads(atlas, texKey, type, ry) {
+    const e = atlas.entries.get(texKey);
+    const R = r => rectUV(e, r);
+    let x0 = 1, x1 = 15, w = 14, l0 = 7, l1 = 9, lw = 2;
+    if (type === 'left')  { x0 = 0; x1 = 15; w = 15; l0 = 0;  l1 = 1;  lw = 1; }   // Doppeltruhe: Hälfte schließt zur Nachbarhälfte hin bündig ab
+    if (type === 'right') { x0 = 1; x1 = 16; w = 15; l0 = 15; l1 = 16; lw = 1; }
+    const g = 0.01;                                                                  // Deckel minimal größer: kein Z-Fighting mit dem Unterteil
+    const els = [
+      { from: [x0, 0, 1], to: [x1, 10, 15], faces: cuboidFaces(R, 0, 19, w, 10, 14) },
+      { from: [x0 - g, 9, 1 - g], to: [x1 + g, 14, 15 + g], faces: cuboidFaces(R, 0, 0, w, 5, 14) },
+      { from: [l0, 7, 15], to: [l1, 11, 16], faces: cuboidFaces(R, 0, 0, lw, 4, 1) }
+    ];
+    return Models.bakeElements(els, { t: texKey }, 0, ry, 'chest');
+  }
+
+  /* ---------- Shulker-Kisten ---------- */
+  const SHULKER_RE = /(^|_)shulker_box$/;
+  // Blickrichtung (Öffnungsseite) -> Drehung [x, y] des Modells (Standard: Deckel nach oben)
+  const SHULKER_ROT = { up: [0, 0], down: [180, 0], north: [90, 0], south: [270, 0], east: [90, 90], west: [90, 270] };
+
+  // Maße in 1/16-Block (Modell des Spiels): Unterteil 16x8x16, Deckel 16x12x16 (überlappt das Unterteil um 4)
+  function shulkerQuads(atlas, texKey, rx, ry) {
+    const e = atlas.entries.get(texKey);
+    const R = r => rectUV(e, r);
+    const g = 0.01;                                         // Deckel minimal größer: kein Z-Fighting mit dem Unterteil
+    const els = [
+      { from: [0, 0, 0], to: [16, 8, 16], faces: cuboidFaces(R, 0, 28, 16, 8, 16) },
+      { from: [-g, 4, -g], to: [16 + g, 16 + g, 16 + g], faces: cuboidFaces(R, 0, 0, 16, 12, 16) }
+    ];
+    return Models.bakeElements(els, { t: texKey }, rx, ry, 'shulker');
+  }
+
   /* ---------- Hauptfunktion ---------- */
   async function prepare(schem, infos, atlas) {
     const sp = new Map();
     schem.special = sp;
 
-    const kinds = infos.map(i => (!i || i.skip || !i.special) ? null : (/_banner$/.test(i.name) ? 'banner' : SIGN_RE.test(i.name) ? 'sign' : 'head'));
+    const kinds = infos.map(i => (!i || i.skip || !i.special) ? null : (/_banner$/.test(i.name) ? 'banner' : SIGN_RE.test(i.name) ? 'sign' : CHEST_RE.test(i.name) ? 'chest' : SHULKER_RE.test(i.name) ? 'shulker' : 'head'));
     if (!kinds.some(Boolean)) return;
 
     const blocks = schem.blocks, palette = schem.palette;
@@ -323,7 +371,18 @@ const Special = (() => {
       const rot = wall ? (FACING_ROT[props.facing] || 0) : (parseInt(props.rotation, 10) || 0);
       const ry = rot * 22.5;
 
-      if (kind === 'sign') {
+      if (kind === 'shulker') {
+        const color = info.name === 'shulker_box' ? '' : info.name.replace(/_shulker_box$/, '');
+        const texPath = 'entity/shulker/shulker' + (color ? '_' + color : '');
+        if (!jobs.has('tex:' + texPath)) jobs.set('tex:' + texPath, firstTexture(atlas, [texPath]));
+        const [rx, ryy] = SHULKER_ROT[props.facing] || SHULKER_ROT.up;
+        plan.push({ idx, kind, rx, ry: ryy, texPath });
+      } else if (kind === 'chest') {
+        const type = ['left', 'right'].includes(props.type) && info.name !== 'ender_chest' ? props.type : 'single';
+        const texPath = chestTexture(info.name, type);
+        if (!jobs.has('tex:' + texPath)) jobs.set('tex:' + texPath, firstTexture(atlas, [texPath]));
+        plan.push({ idx, kind, ry: (FACING_ROT[props.facing] || 0) * 22.5, texPath, type });
+      } else if (kind === 'sign') {
         const hanging = /hanging_sign$/.test(info.name);
         const wood = info.name.replace(/_(wall_)?(hanging_)?sign$/, '');
         const texPath = hanging ? 'entity/signs/hanging/' + wood : 'entity/signs/' + wood;
@@ -358,6 +417,22 @@ const Special = (() => {
     const memo = new Map();
     for (const p of plan) {
       let quads;
+      if (p.kind === 'shulker') {
+        const tex = results.get('tex:' + p.texPath);
+        if (!tex) continue;                                   // Textur fehlt -> Standard-Darstellung (Ersatzbox)
+        const sig = `u|${p.rx}|${p.ry}|${tex}`;
+        quads = memo.get(sig) || (memo.set(sig, shulkerQuads(atlas, tex, p.rx, p.ry)), memo.get(sig));
+        sp.set(p.idx, quads);
+        continue;
+      }
+      if (p.kind === 'chest') {
+        const tex = results.get('tex:' + p.texPath);
+        if (!tex) continue;                                   // Textur fehlt -> Standard-Darstellung (Holzbox)
+        const sig = `c|${p.type}|${p.ry}|${tex}`;
+        quads = memo.get(sig) || (memo.set(sig, chestQuads(atlas, tex, p.type, p.ry)), memo.get(sig));
+        sp.set(p.idx, quads);
+        continue;
+      }
       if (p.kind === 'sign') {
         const g = signLayout(p.hanging, p.wall).text;
         const fs = signSide(p.data, 'front'), bs = signSide(p.data, 'back');

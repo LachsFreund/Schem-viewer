@@ -23,7 +23,7 @@ const Models = (() => {
   // Blöcke ohne Kollision (man läuft durch)
   const NO_COLLIDE = new RegExp([
     '(^|_)(torch|button|sign|banner|rail|rails|vine|vines|lever|tripwire|tripwire_hook|string|cobweb|ladder|sapling|kelp|seagrass|tall_seagrass|roots|sprouts|fern|grass|tulip|dandelion|poppy|orchid|allium|bluet|cornflower|daisy|lilac|peony|bush|mushroom|fungus|lily_pad|wheat|carrots|potatoes|beetroots|sugar_cane|candle|lantern|head|skull|pressure_plate|water|lava|bubble_column|fire|frogspawn|dead_bush|petals|redstone_wire|comparator|repeater|coral_fan|wall_coral_fan|leaf_litter|bamboo_sapling)$',
-    'torch', '_button$', 'pressure_plate$', '_sign$', '_banner$', '_head$', '_skull$', 'coral_fan$', 'candle$', 'flower$'
+    '^(attached_)?(melon|pumpkin)_stem$', 'torch', '_button$', 'pressure_plate$', '_sign$', '_banner$', '_head$', '_skull$', 'coral_fan$', 'candle$', 'flower$'
   ].join('|'));
 
   const modelMemo = new Map();
@@ -60,7 +60,7 @@ const Models = (() => {
   }
 
   /* ---------- Tint (Biom-Farben, Plains-Standard) ---------- */
-  function tintFor(name) {
+  function tintFor(name, props) {
     if (/leaves$/.test(name)) {
       if (name.startsWith('birch')) return 0x80a755;
       if (name.startsWith('spruce')) return 0x619961;
@@ -68,7 +68,15 @@ const Models = (() => {
     }
     if (name === 'water') return 0x3f76e4;
     if (name === 'lily_pad') return 0x208030;
-    if (name === 'redstone_wire') return 0xc80000;
+    if (name === 'redstone_wire') {            // Farbe wie im Spiel: Signalstärke 0 = dunkelrot, 15 = leuchtend rot
+      const pw = Math.max(0, Math.min(15, parseInt(props && props.power, 10) || 0)), f = pw / 15;
+      const r = f * 0.6 + (f > 0 ? 0.4 : 0.3), g = Math.min(1, Math.max(0, f * f * 0.7 - 0.5)), b = Math.min(1, Math.max(0, f * f * 0.6 - 0.7));
+      return (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255);
+    }
+    if (/^(melon|pumpkin)_stem$/.test(name)) {   // wachsender Stiel: grün -> gelblich
+      const a = Math.max(0, Math.min(7, parseInt(props && props.age, 10) || 0));
+      return ((a * 32) << 16) | ((255 - a * 8) << 8) | (a * 4);
+    }
     if (/stem$/.test(name)) return 0xe0c71c;
     if (/vine$/.test(name)) return 0x77ab2f;
     return 0x91bd59;
@@ -221,7 +229,7 @@ const Models = (() => {
           tex,
           cull: face.cullface ? dirAfterRot(DIRI[face.cullface] ?? 0, rx, ry) : -1,
           shade: el.shade === false ? 1 : shadeOf(n),
-          tint: face.tintindex !== undefined && face.tintindex >= 0 ? tintFor(name) : -1
+          tint: face.tintindex !== undefined && face.tintindex >= 0 ? tintFor(name, out.props) : -1
         });
       }
       if (isFull && fullKeys.length === 6) out.fullKeys = fullKeys;
@@ -260,7 +268,8 @@ const Models = (() => {
   }
 
   /* ---------- Hauptfunktion ---------- */
-  const SPECIAL_RE = /_banner$|_head$|_skull$|_sign$/;
+  const EMPTY_MODEL_OK = /^pitcher_crop$/;
+  const SPECIAL_RE = /_banner$|_head$|_skull$|_sign$|(^|_)chest$|(^|_)shulker_box$/;
 
   async function build(st) {
     const out = await buildInner(st);
@@ -269,9 +278,19 @@ const Models = (() => {
       // Banner & Köpfe sind Block-Entities: ihr echtes Aussehen erzeugt special.js. Hier nur Auswahl-Box.
       out.special = true;
       out.collide = false;
+      if (/(^|_)shulker_box$/.test(n)) {            // Shulker-Kiste: fester ganzer Block
+        out.collide = true;
+        out.boxes = [[0, 0, 0, 1, 1, 1]];
+      }
+      if (/(^|_)chest$/.test(n)) {                 // Truhen sind fest (Kollision 14/16 hoch)
+        out.collide = true;
+        out.boxes = [[1 / 16, 0, 1 / 16, 15 / 16, 14 / 16, 15 / 16]];
+      }
       out.fullCube = false; out.fullKeys = null;   // nie als "voller Block" behandeln (sonst fehlen Nachbarflächen)
       out.bounds = /_banner$/.test(n) ? [0.1, 0, 0.1, 0.9, 1, 0.9]
         : /_sign$/.test(n) ? [0.05, 0.1, 0.05, 0.95, 0.9, 0.95]
+        : /(^|_)chest$/.test(n) ? [0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375]
+        : /(^|_)shulker_box$/.test(n) ? [0, 0, 0, 1, 1, 1]
         : /wall/.test(n) ? [0.25, 0.25, 0.25, 0.75, 0.75, 0.75]
         : [0.25, 0, 0.25, 0.75, 0.5, 0.75];
     }
@@ -282,7 +301,7 @@ const Models = (() => {
     const name = st.name.replace(/^minecraft:/, '');
     const props = Object.assign({}, DEFAULT_PROPS, st.props || {});
     const out = {
-      name, skip: false, translucent: TRANSLUCENT.test(name), cullSame: CULL_SAME.test(name),
+      props, name, skip: false, translucent: TRANSLUCENT.test(name), cullSame: CULL_SAME.test(name),
       quads: [], boxes: [], collide: false, bounds: null, fullKeys: null, fullCube: false, opaqueFull: false
     };
     if (SKIP.test(name)) { out.skip = true; return out; }
@@ -327,8 +346,9 @@ const Models = (() => {
       if (model.elements) {
         out.hasElements = true;                       // Modell mit echter Geometrie (z. B. Schilder ab 26.x)
         bake(model.elements, model.textures, rx, ry, name, out, colorKey, !!ap.uvlock);
-      } else if (!model.builtin) {
-        emptyModel = true;        // Modell existiert, hat aber bewusst keine Geometrie (z. B. junge Krugpflanze oben)
+      } else if (!model.builtin && EMPTY_MODEL_OK.test(name)) {
+        emptyModel = true;        // bewusst leer: oberer Teil der jungen Krugpflanze. Truhen, Shulker-Kisten usw. haben im Datenpaket ebenfalls
+                                  // ein Modell ohne Geometrie (nur "particle") – die werden von special.js bzw. als Ersatzbox gezeichnet
       } else {
         // Block-Entities (Truhe, Bett, Schild, ...): einfache Box mit Partikel-Textur
         const tex = resolveTex(model.textures.particle, model.textures) || null;
