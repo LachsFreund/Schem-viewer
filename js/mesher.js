@@ -9,7 +9,7 @@ const Mesher = (() => {
   const DIRV = Models.DIRV;
 
   class Buf {
-    constructor() { this.pos = []; this.uv = []; this.col = []; this.layer = []; this.idx = []; this.n = 0; }
+    constructor() { this.pos = []; this.uv = []; this.col = []; this.layer = []; this.blk = []; this.idx = []; this.n = 0; }
     geometry() {
       if (!this.n) return null;
       const g = new THREE.BufferGeometry();
@@ -17,6 +17,7 @@ const Mesher = (() => {
       g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
       g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
       g.setAttribute('aLayer', new THREE.Float32BufferAttribute(this.layer, 1));
+      g.setAttribute('aBlock', new THREE.Float32BufferAttribute(this.blk, 3));   // Blockkoordinate je Vertex (für "durchsichtig machen")
       g.setIndex(new THREE.Uint32BufferAttribute(this.idx, 1));
       g.computeBoundingSphere();
       return g;
@@ -36,6 +37,7 @@ const Mesher = (() => {
       atlas.uv(q.tex, q.uv[i * 2], q.uv[i * 2 + 1], buf.uv);
       buf.col.push(r, g, b);
       buf.layer.push(y);
+      buf.blk.push(x, y, z);
     }
     // Ecken: 0=TL 1=TR 2=BR 3=BL  -> gegen den Uhrzeigersinn von außen
     buf.idx.push(base, base + 3, base + 2, base, base + 2, base + 1);
@@ -116,7 +118,37 @@ const Mesher = (() => {
       return { cutout: c.geometry(), translucent: t.geometry() };
     }
 
+    /**
+     * Geometrie für "durchsichtig gemachte" Blöcke (Liste von Blockindizes):
+     *   trans = alle Flächen dieser Blöcke (werden mit 20 % Deckkraft gezeichnet)
+     *   solid = Flächen der Nachbarblöcke, die vorher vom ausgeblendeten Block verdeckt waren (damit man dahinter etwas sieht)
+     */
+    function ghost(list) {
+      const trans = new Buf(), solid = new Buf(), set = new Set(list);
+      for (const bi of list) {
+        const x = bi % W, z = Math.floor(bi / W) % L, y = Math.floor(bi / (W * L));
+        const info = infos[blocks[bi]];
+        if (!info || info.skip) continue;
+        for (const q of (info.special && sp.get(bi)) || info.quads) emit(trans, q, x, y, z, atlas);
+        for (let d = 0; d < 6; d++) {
+          const v = DIRV[d], nx = x + v[0], ny = y + v[1], nz = z + v[2];
+          if (nx < 0 || ny < 0 || nz < 0 || nx >= W || ny >= H || nz >= L) continue;
+          const nbi = nx + nz * W + ny * W * L;
+          if (set.has(nbi)) continue;
+          const ni = infos[blocks[nbi]];
+          if (!ni || ni.skip) continue;
+          for (const q of (ni.special && sp.get(nbi)) || ni.quads) {
+            if (q.cull < 0) continue;
+            const c = DIRV[q.cull];
+            if (nx + c[0] === x && ny + c[1] === y && nz + c[2] === z) emit(solid, q, nx, ny, nz, atlas);   // war durch den Block verdeckt
+          }
+        }
+      }
+      return { trans: trans.geometry(), solid: solid.geometry() };
+    }
+
     return {
+      ghost,
       cutout: cut.geometry(),
       translucent: trans.geometry(),
       infos, cap,

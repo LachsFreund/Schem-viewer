@@ -16,28 +16,42 @@
   let atlas = new Atlas();
   // Ebenen-Filter: Fragmente von Blöcken mit y >= uCut werden verworfen (kein Clip-Plane -> keine Unterseiten-Reste)
   const layerCut = { value: 1e6 };
-  const layerShader = shader => {
+  // "Durchsichtig machen": solange V gehalten wird, wird EIN Block (der angeschaute) in der Hauptfläche übersprungen
+  const ghostU = { uGhost: { value: new THREE.Vector3(-99, -99, -99) }, uGhostOn: { value: 0 } };
+  const makeShader = withGhost => shader => {
     shader.uniforms.uCut = layerCut;
+    if (withGhost) { shader.uniforms.uGhost = ghostU.uGhost; shader.uniforms.uGhostOn = ghostU.uGhostOn; }
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aLayer;\nvarying float vLayer;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLayer = aLayer;');
+      .replace('#include <common>', '#include <common>\nattribute float aLayer;\nvarying float vLayer;' + (withGhost ? '\nattribute vec3 aBlock;\nvarying vec3 vBlock;' : ''))
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLayer = aLayer;' + (withGhost ? '\nvBlock = aBlock;' : ''));
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vLayer;\nuniform float uCut;')
-      .replace('void main() {', 'void main() {\n  if (vLayer > uCut - 0.5) discard;');
+      .replace('#include <common>', '#include <common>\nvarying float vLayer;\nuniform float uCut;' + (withGhost ? '\nvarying vec3 vBlock;\nuniform vec3 uGhost;\nuniform float uGhostOn;' : ''))
+      .replace('void main() {', 'void main() {\n  if (vLayer > uCut - 0.5) discard;' + (withGhost
+        ? '\n  if (uGhostOn > 0.5) { vec3 dg = abs(vBlock - uGhost); if (dg.x < 0.5 && dg.y < 0.5 && dg.z < 0.5) discard; }' : ''));
   };
+
   const matCut = new THREE.MeshBasicMaterial({
     map: atlas.texture, vertexColors: true, alphaTest: 0.5
   });
-  matCut.onBeforeCompile = layerShader;
+  matCut.onBeforeCompile = makeShader(true);
+  matCut.customProgramCacheKey = () => 'sv-layer-ghost';
   const matTrans = new THREE.MeshBasicMaterial({
     map: atlas.texture, vertexColors: true, transparent: true, alphaTest: 0.02,
     depthWrite: false
   });
-  matTrans.onBeforeCompile = layerShader;
+  matTrans.onBeforeCompile = makeShader(true);
+  matTrans.customProgramCacheKey = () => 'sv-layer-ghost';
+  // die durchsichtig gemachten Blöcke selbst: 20 % Deckkraft, nur Ebenen-Filter
+  const matGhost = new THREE.MeshBasicMaterial({
+    map: atlas.texture, vertexColors: true, transparent: true, opacity: 0.2, alphaTest: 0.01, depthWrite: false
+  });
+  matGhost.onBeforeCompile = makeShader(false);
+  matGhost.customProgramCacheKey = () => 'sv-layer-only';
 
   const modelGroup = new THREE.Group();
   const capGroup = new THREE.Group();
-  scene.add(modelGroup, capGroup);
+  const ghostGroup = new THREE.Group();     // durchsichtig gemachte Blöcke (Taste V)
+  scene.add(modelGroup, capGroup, ghostGroup);
 
   let grid = null;
   const axes = new THREE.AxesHelper(4);
@@ -121,6 +135,37 @@
     controls.focus(new THREE.Vector3(s.width / 2, s.height / 2, s.length / 2), Math.max(s.width, s.height, s.length));
   }
 
+  /* ---------- Durchsichtig machen: Taste V GEHALTEN ---------- */
+  // Der Block unter Maus / Fadenkreuz ist zu 20 % durchsichtig, solange V gedrückt ist. Schaut man weg oder lässt V los, ist er sofort wieder normal.
+  let ghostHeld = false;   // V wird gerade gehalten
+  let ghostBi = -1;        // Blockindex (x + z*W + y*W*L) des aktuell durchsichtigen Blocks, -1 = keiner
+
+  function applyGhosts() {
+    clearGroup(ghostGroup);
+    if (!current || ghostBi < 0) { ghostU.uGhostOn.value = 0; return; }
+    const s = current.schem;
+    ghostU.uGhost.value.set(ghostBi % s.width, Math.floor(ghostBi / (s.width * s.length)), Math.floor(ghostBi / s.width) % s.length);
+    ghostU.uGhostOn.value = 1;
+    const g = current.built.ghost([ghostBi]);
+    if (g.solid) ghostGroup.add(new THREE.Mesh(g.solid, matCut));                                        // vorher verdeckte Nachbarflächen
+    if (g.trans) { const t = new THREE.Mesh(g.trans, matGhost); t.renderOrder = 3; ghostGroup.add(t); }   // der Block selbst, 20 %
+  }
+
+  function setGhostTarget(hit) {
+    const s = current && current.schem;
+    const bi = hit && s ? hit.x + hit.z * s.width + hit.y * s.width * s.length : -1;
+    if (bi === ghostBi) return;            // gleiches Ziel: nichts neu aufbauen
+    ghostBi = bi;
+    applyGhosts();
+  }
+
+  const ghostTarget = () => (controls.fly ? pick(null, true, REACH) : (lastMouse ? pick(lastMouse, false) : null));
+
+  function releaseGhost() {
+    ghostHeld = false;
+    if (ghostBi >= 0) { ghostBi = -1; applyGhosts(); }
+  }
+
   /* ---------- Layer-Slider (mit Oberseiten-Caps) ---------- */
   let capQueued = false;
   function updateSlice() {
@@ -202,6 +247,8 @@
     addMeshes(modelGroup, built.cutout, built.translucent);
 
     current = { schem, label, built };
+    applyGhosts();
+    ghostBi = -1;
     measure.setModel(schem, built.infos);
     physics.setModel(schem, built.infos);
     rebuildGrid(schem.width, schem.length, built.stats.blocks ? 32 : 0); // leere Fläche: Raster exakt so groß wie die Fläche
@@ -267,6 +314,7 @@
         measure.infos = built.infos;
         physics.infos = built.infos;
         applyCap();
+        applyGhosts();
       } while (refreshAgain);
     } catch (err) { console.error(err); toast(err.message || String(err), true); }
     finally { refreshing = false; }
@@ -372,7 +420,7 @@
   $('sliceY').oninput = updateSlice;
   $('chkGrid').onchange = e => { if (grid) grid.visible = e.target.checked; if (northMark) northMark.visible = e.target.checked; settings.grid = e.target.checked; saveSettings(); };
   $('chkAxes').onchange = e => { axes.visible = e.target.checked; settings.axes = e.target.checked; saveSettings(); };
-  $('chkWire').onchange = e => { matCut.wireframe = matTrans.wireframe = e.target.checked; settings.wire = e.target.checked; saveSettings(); };
+  $('chkWire').onchange = e => { matCut.wireframe = matTrans.wireframe = matGhost.wireframe = e.target.checked; settings.wire = e.target.checked; saveSettings(); };
 
   // Maus-Empfindlichkeit (wird gemerkt)
   const BASE_SENS = controls.sensitivity;
@@ -411,8 +459,8 @@
     Models.reset();
     atlas.dispose();
     atlas = new Atlas();
-    matCut.map = matTrans.map = atlas.texture;
-    matCut.needsUpdate = matTrans.needsUpdate = true;
+    matCut.map = matTrans.map = matGhost.map = atlas.texture;
+    matCut.needsUpdate = matTrans.needsUpdate = matGhost.needsUpdate = true;
     if (current) show(current.schem, current.label);
   };
 
@@ -455,8 +503,14 @@
     // Z (nach aufgedrucktem Zeichen, damit es auch auf QWERTZ-Tastaturen funktioniert) oder C: Auswahl zurücksetzen
     if (((e.key && e.key.toLowerCase() === 'z') || e.code === 'KeyC') && !e.ctrlKey && !e.altKey && !e.metaKey) measure.clear();
     if (e.code === 'KeyM') setMeasureMode(!controls.measureMode);
+    if (e.code === 'KeyV' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat) {   // V gehalten: angeschauten Block zu 20 % durchsichtig
+      ghostHeld = true;
+      setGhostTarget(ghostTarget());
+    }
     if (e.code === 'KeyX' && controls.fly) useBlock(pick(null, true, REACH)); // benutzen ohne Rechtsklick (nur Flugmodus)
   });
+  window.addEventListener('keyup', e => { if (e.code === 'KeyV') releaseGhost(); });
+  window.addEventListener('blur', releaseGhost);
   window.addEventListener('keyup', e => {
     if ((e.code === 'AltLeft' || e.code === 'AltRight') && !controls.measureMode) measure.setHover(null);
   });
@@ -499,11 +553,14 @@
   window.addEventListener('resize', resize);
   resize();
 
-  let last = performance.now(), flyHoverT = 0;
+  let last = performance.now(), flyHoverT = 0, ghostT = 0;
   function frame(now) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     controls.update(dt);
+
+    // V gehalten: Ziel laufend nachführen (Maus bewegt, Kamera gedreht, ...) – nur ein Strahl, nur bei Wechsel wird neu gebaut
+    if (ghostHeld && current && now - ghostT > 25) { ghostT = now; setGhostTarget(ghostTarget()); }
 
     // Flugmodus: anvisierter Block bekommt eine Outline
     if (controls.fly && current && now - flyHoverT > 30) {
