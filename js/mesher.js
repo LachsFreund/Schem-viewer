@@ -120,7 +120,7 @@ const Mesher = (() => {
 
     /**
      * Geometrie für "durchsichtig gemachte" Blöcke (Liste von Blockindizes):
-     *   trans = alle Flächen dieser Blöcke (werden mit 20 % Deckkraft gezeichnet)
+     *   trans = alle Flächen dieser Blöcke (werden mit 30 % Deckkraft gezeichnet)
      *   solid = Flächen der Nachbarblöcke, die vorher vom ausgeblendeten Block verdeckt waren (damit man dahinter etwas sieht)
      */
     function ghost(list) {

@@ -41,9 +41,9 @@
   });
   matTrans.onBeforeCompile = makeShader(true);
   matTrans.customProgramCacheKey = () => 'sv-layer-ghost';
-  // die durchsichtig gemachten Blöcke selbst: 20 % Deckkraft, nur Ebenen-Filter
+  // der durchsichtig gemachte Block selbst: 30 % Deckkraft, nur Ebenen-Filter
   const matGhost = new THREE.MeshBasicMaterial({
-    map: atlas.texture, vertexColors: true, transparent: true, opacity: 0.2, alphaTest: 0.01, depthWrite: false
+    map: atlas.texture, vertexColors: true, transparent: true, opacity: 0.3, alphaTest: 0.01, depthWrite: false
   });
   matGhost.onBeforeCompile = makeShader(false);
   matGhost.customProgramCacheKey = () => 'sv-layer-only';
@@ -136,7 +136,7 @@
   }
 
   /* ---------- Durchsichtig machen: Taste V GEHALTEN ---------- */
-  // Der Block unter Maus / Fadenkreuz ist zu 20 % durchsichtig, solange V gedrückt ist. Schaut man weg oder lässt V los, ist er sofort wieder normal.
+  // Der Block unter Maus / Fadenkreuz ist zu 30 % durchsichtig, solange V gedrückt ist. Schaut man weg oder lässt V los, ist er sofort wieder normal.
   let ghostHeld = false;   // V wird gerade gehalten
   let ghostBi = -1;        // Blockindex (x + z*W + y*W*L) des aktuell durchsichtigen Blocks, -1 = keiner
 
@@ -148,7 +148,7 @@
     ghostU.uGhostOn.value = 1;
     const g = current.built.ghost([ghostBi]);
     if (g.solid) ghostGroup.add(new THREE.Mesh(g.solid, matCut));                                        // vorher verdeckte Nachbarflächen
-    if (g.trans) { const t = new THREE.Mesh(g.trans, matGhost); t.renderOrder = 3; ghostGroup.add(t); }   // der Block selbst, 20 %
+    if (g.trans) { const t = new THREE.Mesh(g.trans, matGhost); t.renderOrder = 3; ghostGroup.add(t); }   // der Block selbst, 30 %
   }
 
   function setGhostTarget(hit) {
@@ -503,7 +503,7 @@
     // Z (nach aufgedrucktem Zeichen, damit es auch auf QWERTZ-Tastaturen funktioniert) oder C: Auswahl zurücksetzen
     if (((e.key && e.key.toLowerCase() === 'z') || e.code === 'KeyC') && !e.ctrlKey && !e.altKey && !e.metaKey) measure.clear();
     if (e.code === 'KeyM') setMeasureMode(!controls.measureMode);
-    if (e.code === 'KeyV' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat) {   // V gehalten: angeschauten Block zu 20 % durchsichtig
+    if (e.code === 'KeyV' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.repeat) {   // V gehalten: angeschauten Block zu 30 % durchsichtig
       ghostHeld = true;
       setGhostTarget(ghostTarget());
     }

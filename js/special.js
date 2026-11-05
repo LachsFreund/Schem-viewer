@@ -311,6 +311,24 @@ const Special = (() => {
     return 'entity/chest/normal' + side;
   }
 
+  /*
+   * Quader-Zuordnung für Block-Entity-Modelle, die (anders als Mobs/Köpfe/Schilder) mit "Y nach oben" definiert sind – z. B. die Truhe.
+   * Folge gegenüber cuboidFaces(): Unterseite = 1. Fläche, Oberseite = 2. Fläche (vertauscht), alle Seitenstreifen stehen auf dem Kopf
+   * (v wächst nach oben), und Norden/Süden benutzen die Streifen A bzw. B (Süden = Streifen mit den Verschluss-Kerben).
+   */
+  function cuboidFacesYUp(R, u0, v0, w, h, d) {
+    const f = r => ({ uv: R(r), texture: '#t' });
+    const vT = v0 + d, vB = v0 + d + h;
+    return {
+      up:    f([u0 + d + w, v0 + d, u0 + d + 2 * w, v0]),
+      down:  f([u0 + d, v0, u0 + d + w, v0 + d]),
+      north: f([u0 + d + w, vB, u0 + d, vT]),
+      south: f([u0 + 2 * d + 2 * w, vB, u0 + 2 * d + w, vT]),
+      east:  f([u0 + 2 * d + w, vB, u0 + d + w, vT]),
+      west:  f([u0 + d, vB, u0, vT])
+    };
+  }
+
   // Maße in 1/16-Block (Vorderseite = Süden bei Drehung 0): Unterteil 14x10x14, Deckel 14x5x14, Schloss 2x4x1
   function chestQuads(atlas, texKey, type, ry) {
     const e = atlas.entries.get(texKey);
@@ -320,9 +338,9 @@ const Special = (() => {
     if (type === 'right') { x0 = 1; x1 = 16; w = 15; l0 = 15; l1 = 16; lw = 1; }
     const g = 0.01;                                                                  // Deckel minimal größer: kein Z-Fighting mit dem Unterteil
     const els = [
-      { from: [x0, 0, 1], to: [x1, 10, 15], faces: cuboidFaces(R, 0, 19, w, 10, 14) },
-      { from: [x0 - g, 9, 1 - g], to: [x1 + g, 14, 15 + g], faces: cuboidFaces(R, 0, 0, w, 5, 14) },
-      { from: [l0, 7, 15], to: [l1, 11, 16], faces: cuboidFaces(R, 0, 0, lw, 4, 1) }
+      { from: [x0, 0, 1], to: [x1, 10, 15], faces: cuboidFacesYUp(R, 0, 19, w, 10, 14) },
+      { from: [x0 - g, 9, 1 - g], to: [x1 + g, 14, 15 + g], faces: cuboidFacesYUp(R, 0, 0, w, 5, 14) },
+      { from: [l0, 7, 15], to: [l1, 11, 16], faces: cuboidFacesYUp(R, 0, 0, lw, 4, 1) }
     ];
     return Models.bakeElements(els, { t: texKey }, 0, ry, 'chest');
   }
