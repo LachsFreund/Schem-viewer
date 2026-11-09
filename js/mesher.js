@@ -66,6 +66,14 @@ const Mesher = (() => {
       info.group = /leaves$/.test(info.name) ? 'leaves' : info.name;
     }
 
+    // Wasser / Lava: Füllstände, Eckhöhen, Gefälle, Strömung (siehe fluid.js); waterlogged-Blöcke enthalten eine Wasserquelle
+    for (const info of infos) info.fluid = Fluid.kind(info);
+    let fluidMap = null;
+    if (infos.some(i => i.fluid)) {
+      await atlas.ensure(Fluid.KEYS);
+      fluidMap = Fluid.build({ W, H, L, blocks, infos, atlas });
+    }
+
     say('Erzeuge Geometrie …');
 
     const infoAt = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= W || y >= H || z >= L)
@@ -90,12 +98,20 @@ const Mesher = (() => {
       if (!info || info.skip) continue;
       total++;
       counts.set(info.name, (counts.get(info.name) || 0) + 1);
+      const bi = x + z * W + y * W * L;
+      const fc = fluidMap && fluidMap.get(bi);
+      if (fc && info.fluid.own) {                       // Wasser-/Lava-Block: eigene Flächen statt des Würfels
+        const fb = fc.trans ? trans : cut;
+        for (const q of fc.quads) emit(fb, q, x, y, z, atlas);
+        continue;
+      }
       const buf = info.translucent ? trans : cut;
-      const quads = (info.special && sp.get(x + z * W + y * W * L)) || info.quads;
+      const quads = (info.special && sp.get(bi)) || info.quads;
       for (const q of quads) {
         if (culled(info, q, x, y, z)) continue;
         emit(buf, q, x, y, z, atlas);
       }
+      if (fc) for (const q of fc.quads) emit(fc.trans ? trans : cut, q, x, y, z, atlas);   // Wasser in waterlogged-Block
     }
 
     const legend = [...counts.entries()]
@@ -108,7 +124,10 @@ const Mesher = (() => {
       const c = new Buf(), t = new Buf();
       for (let z = 0; z < L; z++) for (let x = 0; x < W; x++) {
         const info = infos[blocks[x + z * W + y * W * L]];
+        const fc = fluidMap && fluidMap.get(x + z * W + y * W * L);
+        if (fc && fc.cap) emit(fc.trans ? t : c, fc.cap, x, y, z, atlas);
         if (!info || info.skip || info.special) continue;
+        if (fc && info.fluid.own) continue;           // Fluid-Block hat keinen Würfel
         for (const q of info.quads) {
           if (q.cull !== 1) continue;                 // nur "up"
           if (!culled(info, q, x, y, z)) continue;     // war ohnehin sichtbar
@@ -129,7 +148,9 @@ const Mesher = (() => {
         const x = bi % W, z = Math.floor(bi / W) % L, y = Math.floor(bi / (W * L));
         const info = infos[blocks[bi]];
         if (!info || info.skip) continue;
-        for (const q of (info.special && sp.get(bi)) || info.quads) emit(trans, q, x, y, z, atlas);
+        const fc = fluidMap && fluidMap.get(bi);
+        if (!(fc && info.fluid.own)) for (const q of (info.special && sp.get(bi)) || info.quads) emit(trans, q, x, y, z, atlas);
+        if (fc) for (const q of fc.quads) emit(trans, q, x, y, z, atlas);
         for (let d = 0; d < 6; d++) {
           const v = DIRV[d], nx = x + v[0], ny = y + v[1], nz = z + v[2];
           if (nx < 0 || ny < 0 || nz < 0 || nx >= W || ny >= H || nz >= L) continue;
